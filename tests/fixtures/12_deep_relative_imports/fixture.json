@@ -1,0 +1,5 @@
+{
+  "entry": "app/main.py",
+  "original": {"cmd": ["python", "-m", "app.main"]},
+  "expect_bundle_success": true
+}

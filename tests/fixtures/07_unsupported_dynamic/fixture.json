@@ -1,0 +1,6 @@
+{
+  "entry": "main.py",
+  "original": {"cmd": ["python", "main.py"]},
+  "expect_bundle_success": false,
+  "expected_error_contains": "dynamic import"
+}

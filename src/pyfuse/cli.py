@@ -1,0 +1,54 @@
+from __future__ import annotations
+
+import argparse
+import traceback
+from pathlib import Path
+
+from .bundler import bundle_project
+from .errors import PyfuseError
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="pyfuse", description="Bundle Python project into one file")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    build = sub.add_parser("build", help="Build a single-file bundle")
+    build.add_argument("entry", type=Path, help="Entry Python file")
+    build.add_argument("-o", "--output", type=Path, required=True, help="Output bundled .py file")
+    build.add_argument("--report", type=Path, help="Write JSON build report")
+    build.add_argument("--debug", action="store_true", help="Show traceback for failures")
+    build.add_argument("--verbose", action="store_true", help="Show verbose build logs")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    if args.command == "build":
+        try:
+            logger = (lambda msg: print(f"[pyfuse] {msg}")) if args.verbose else None
+            result = bundle_project(args.entry, args.output, report_path=args.report, logger=logger)
+        except PyfuseError as exc:
+            print(f"pyfuse: error: {exc}")
+            if args.debug:
+                traceback.print_exc()
+            return 2
+        except Exception as exc:  # noqa: BLE001
+            print(f"pyfuse: internal error: {exc}")
+            if args.debug:
+                traceback.print_exc()
+            return 3
+
+        print(f"bundled: {result.entry_path}")
+        print(f"output:  {result.output_path}")
+        print(f"root:    {result.root_dir}")
+        print(f"modules: {len(result.graph.modules)}")
+        return 0
+
+    parser.print_help()
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

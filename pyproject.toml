@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyfuse"
+version = "0.1.0"
+description = "Bundle multi-file Python projects into a single runnable .py"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{name = "pyfuse"}]
+license = {text = "MIT"}
+
+[project.scripts]
+pyfuse = "pyfuse.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
