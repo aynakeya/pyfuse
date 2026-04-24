@@ -39,6 +39,18 @@ from .sub import y
         tree = ast.parse("import importlib\nimportlib.import_module('x.y')")
         detect_unsupported_dynamic_imports(tree, Path("main.py"))
 
+    def test_detect_alias_importlib_dynamic_import_raises(self) -> None:
+        tree = ast.parse("import importlib as il\nil.import_module('x.y')")
+        with self.assertRaises(UnsupportedFeatureError) as ctx:
+            detect_unsupported_dynamic_imports(tree, Path("main.py"))
+        self.assertIn("aliased importlib.import_module", str(ctx.exception))
+
+    def test_detect_alias_dunder_dynamic_import_raises(self) -> None:
+        tree = ast.parse("_import = __import__\n_import('x')")
+        with self.assertRaises(UnsupportedFeatureError) as ctx:
+            detect_unsupported_dynamic_imports(tree, Path("main.py"))
+        self.assertIn("aliased __import__", str(ctx.exception))
+
     def test_extract_top_level_defined_names(self) -> None:
         tree = ast.parse(
             "import pkg.sub\n"

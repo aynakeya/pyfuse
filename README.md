@@ -110,6 +110,7 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 - 仅支持常量字符串动态导入；以下仍不支持：
   - `__import__(name_var)`
   - `importlib.import_module(name_var)`
+  - 别名形式动态导入（如 `import importlib as il; il.import_module("x")`、`_import = __import__; _import("x")`）
   - 相对动态导入（如 `importlib.import_module(".x", "pkg")`）
 - 不支持打包 C 扩展模块（`.so` / `.pyd`）。
 - 不支持 namespace package（缺少 `__init__.py` 的包目录），会在构建阶段显式报错。
