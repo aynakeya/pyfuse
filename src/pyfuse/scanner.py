@@ -61,7 +61,11 @@ def extract_top_level_defined_names(tree: ast.Module) -> set[str]:
     return names
 
 
-def detect_unsupported_dynamic_imports(tree: ast.AST, path: Path) -> None:
+def detect_unsupported_dynamic_imports(
+    tree: ast.AST,
+    path: Path,
+    allow_unresolved_dynamic_imports: bool = False,
+) -> None:
     importlib_aliases, dunder_import_aliases = _collect_dynamic_import_aliases(tree)
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -89,7 +93,11 @@ def detect_unsupported_dynamic_imports(tree: ast.AST, path: Path) -> None:
                 lineno=lineno,
             )
 
-        _ = _extract_static_dynamic_import(node, path=path)
+        _ = _extract_static_dynamic_import(
+            node,
+            path=path,
+            allow_unresolved_dynamic_imports=allow_unresolved_dynamic_imports,
+        )
 
 
 def _extract_constant_str(node: ast.AST | None) -> str | None:
@@ -138,12 +146,15 @@ def _assignment_targets(node: ast.Assign | ast.AnnAssign) -> list[ast.expr]:
 def _extract_static_dynamic_import(
     node: ast.Call,
     path: Path | None = None,
+    allow_unresolved_dynamic_imports: bool = False,
 ) -> ImportRequest | None:
     lineno = getattr(node, "lineno", 0)
     func = node.func
 
     if isinstance(func, ast.Name) and func.id == "__import__":
         if not node.args:
+            if path is None:
+                return None
             raise UnsupportedFeatureError(
                 "dynamic import via __import__ without module argument is not supported",
                 file=path,
@@ -151,6 +162,8 @@ def _extract_static_dynamic_import(
             )
         module_name = _extract_constant_str(node.args[0])
         if module_name is None:
+            if path is None or allow_unresolved_dynamic_imports:
+                return None
             raise UnsupportedFeatureError(
                 "dynamic import via __import__ requires a constant string module name",
                 file=path,
@@ -174,6 +187,8 @@ def _extract_static_dynamic_import(
             return None
 
         if not node.args:
+            if path is None:
+                return None
             raise UnsupportedFeatureError(
                 "dynamic import via importlib.import_module without module argument is not supported",
                 file=path,
@@ -182,6 +197,8 @@ def _extract_static_dynamic_import(
 
         module_name = _extract_constant_str(node.args[0])
         if module_name is None:
+            if path is None or allow_unresolved_dynamic_imports:
+                return None
             raise UnsupportedFeatureError(
                 "dynamic import via importlib.import_module requires a constant string module name",
                 file=path,

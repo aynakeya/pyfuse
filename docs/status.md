@@ -30,20 +30,21 @@
 - 已完成：`import a.b`、`from a.b import c`、包和 `__init__.py`、相对导入（`.`/`.sub`）支持。
 - 已完成：可静态判定的动态导入支持（`__import__("x.y")`、`importlib.import_module("x.y")`）。
 - 已完成：`from pkg import name` 判定增强（结合 AST 顶层符号，减少误判子模块依赖）。
+- 已完成：额外本地源码根支持（`--module-root`）和显式本地 include（`--include`）。
 - 当前失败点：动态导入的非常量/相对形式仍不支持（按设计显式失败）。
 - 下一步：错误可诊断性与消息完善。
 - 风险：`from x import y` 的静态判定无法 100% 区分 attribute 与 submodule。
 
 ### 阶段 4：错误处理与可诊断性
 - 已完成：`PyfuseError` 体系、定位信息、CLI `--debug`、CLI `--verbose`、不支持动态导入时报错。
-- 已完成：CLI `--report` 构建报告（被打包模块、跳过模块、原因、依赖摘要）。
+- 已完成：CLI `--report` 构建报告（被打包模块、跳过模块、原因、依赖摘要、module roots、includes、module origins）。
 - 当前失败点：无。
 - 下一步：补文档与回归测试。
 - 风险：更复杂动态行为仍会被拒绝。
 
 ### 阶段 5：测试与文档
 - 已完成：单元测试、12 个 fixture 集成测试、README、示例项目、限制说明。
-- 已完成：新增回归覆盖（循环导入、import-time side effects、深层相对导入、脱离工程目录运行 bundled 文件）。
+- 已完成：新增回归覆盖（循环导入、import-time side effects、深层相对导入、脱离工程目录运行 bundled 文件、额外 module root、include 包树、module root 歧义）。
 - 当前失败点：无。
 - 下一步：持续补充边界场景（多层包与动态路径混合）。
 - 风险：不同 Python 次版本对 import 细节可能有微差异。
@@ -69,6 +70,11 @@
 - 原因：单文件运行时要完全模拟 namespace package 代价高且风险大。
 - 替代方案：实现 namespace package 仿真加载器。
 - 风险：部分现代包布局会被拒绝打包。
+
+5. 决策：用 `--module-root` 声明额外本地源码根，用 `--include` 强制包含本地模块或包。
+- 原因：避免从 `sys.path` 或 site-packages 猜测依赖，保持用户代码边界明确。
+- 替代方案：按包名从当前 Python 环境解析。
+- 风险：用户需要显式传入源码根；同名模块在多个 root 下会构建失败。
 
 ## C. 已知限制
 - 仅支持常量字符串动态导入；非常量或相对动态导入不支持。

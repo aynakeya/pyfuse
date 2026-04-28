@@ -24,11 +24,20 @@ class IntegrationTests(unittest.TestCase):
         src_path = str(repo_root / "src")
         env["PYTHONPATH"] = src_path if not env.get("PYTHONPATH") else f"{src_path}:{env['PYTHONPATH']}"
 
+        original_env = env.copy()
+        for pythonpath in cfg.get("original_pythonpath", []):
+            path = str(project_dir / pythonpath)
+            original_env["PYTHONPATH"] = (
+                path
+                if not original_env.get("PYTHONPATH")
+                else f"{path}:{original_env['PYTHONPATH']}"
+            )
+
         original_cmd = cfg["original"]["cmd"]
         original = subprocess.run(
             original_cmd,
             cwd=project_dir,
-            env=env,
+            env=original_env,
             text=True,
             capture_output=True,
             check=False,
@@ -44,6 +53,10 @@ class IntegrationTests(unittest.TestCase):
             "-o",
             str(bundle_out),
         ]
+        for module_root in cfg.get("module_roots", []):
+            bundle_cmd.extend(["--module-root", str(project_dir / module_root)])
+        for include in cfg.get("includes", []):
+            bundle_cmd.extend(["--include", include])
         built = subprocess.run(bundle_cmd, cwd=repo_root, env=env, text=True, capture_output=True, check=False)
 
         if cfg["expect_bundle_success"]:
@@ -191,6 +204,9 @@ class IntegrationTests(unittest.TestCase):
             self.assertIn("dependency_edges", report)
             self.assertIn("main", report["bundled_modules"])
             self.assertIn("helper", report["bundled_modules"])
+            self.assertIn("module_roots", report)
+            self.assertIn("includes", report)
+            self.assertIn("module_origins", report)
 
     def test_bundled_file_runs_outside_project_directory(self) -> None:
         repo_root = Path(__file__).resolve().parent.parent
@@ -230,6 +246,173 @@ class IntegrationTests(unittest.TestCase):
             )
             self.assertEqual(ran.returncode, 0, msg=f"run failed:\n{ran.stdout}\n{ran.stderr}")
             self.assertEqual(ran.stdout, "outside-ok\n")
+
+    def test_module_root_bundles_local_package_outside_entry_dir(self) -> None:
+        repo_root = Path(__file__).resolve().parent.parent
+        env = os.environ.copy()
+        src_path = str(repo_root / "src")
+        env["PYTHONPATH"] = src_path if not env.get("PYTHONPATH") else f"{src_path}:{env['PYTHONPATH']}"
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            scripts = root / "scripts" / "s1"
+            package = root / "src" / "package_a"
+            scripts.mkdir(parents=True)
+            package.mkdir(parents=True)
+            (scripts / "main.py").write_text(
+                "from package_a import value\nprint(value())\n",
+                encoding="utf-8",
+            )
+            (package / "__init__.py").write_text(
+                "from .core import value\n",
+                encoding="utf-8",
+            )
+            (package / "core.py").write_text(
+                "def value():\n    return 'module-root-ok'\n",
+                encoding="utf-8",
+            )
+
+            bundled_path = root / "dist" / "s1.py"
+            built = subprocess.run(
+                [
+                    "python",
+                    "-m",
+                    "pyfuse.cli",
+                    "build",
+                    str(scripts / "main.py"),
+                    "-o",
+                    str(bundled_path),
+                    "--module-root",
+                    str(root / "src"),
+                ],
+                cwd=repo_root,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(built.returncode, 0, msg=f"bundle failed:\n{built.stdout}\n{built.stderr}")
+
+            outside = root / "outside"
+            outside.mkdir()
+            ran = subprocess.run(
+                ["python", str(bundled_path)],
+                cwd=outside,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(ran.returncode, 0, msg=f"run failed:\n{ran.stdout}\n{ran.stderr}")
+            self.assertEqual(ran.stdout, "module-root-ok\n")
+
+    def test_include_bundles_dynamic_local_package_tree(self) -> None:
+        repo_root = Path(__file__).resolve().parent.parent
+        env = os.environ.copy()
+        src_path = str(repo_root / "src")
+        env["PYTHONPATH"] = src_path if not env.get("PYTHONPATH") else f"{src_path}:{env['PYTHONPATH']}"
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            scripts = root / "scripts" / "s1"
+            package = root / "src" / "package_a"
+            scripts.mkdir(parents=True)
+            package.mkdir(parents=True)
+            (scripts / "main.py").write_text(
+                "import importlib\n"
+                "PLUGIN = 'package_a.plugin'\n"
+                "mod = importlib.import_module(PLUGIN)\n"
+                "print(mod.run())\n",
+                encoding="utf-8",
+            )
+            (package / "__init__.py").write_text("", encoding="utf-8")
+            (package / "plugin.py").write_text(
+                "from .helper import msg\n"
+                "def run():\n"
+                "    return msg()\n",
+                encoding="utf-8",
+            )
+            (package / "helper.py").write_text(
+                "def msg():\n    return 'include-ok'\n",
+                encoding="utf-8",
+            )
+
+            bundled_path = root / "dist" / "s1.py"
+            built = subprocess.run(
+                [
+                    "python",
+                    "-m",
+                    "pyfuse.cli",
+                    "build",
+                    str(scripts / "main.py"),
+                    "-o",
+                    str(bundled_path),
+                    "--module-root",
+                    str(root / "src"),
+                    "--include",
+                    "package_a",
+                ],
+                cwd=repo_root,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(built.returncode, 0, msg=f"bundle failed:\n{built.stdout}\n{built.stderr}")
+
+            outside = root / "outside"
+            outside.mkdir()
+            ran = subprocess.run(
+                ["python", str(bundled_path)],
+                cwd=outside,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(ran.returncode, 0, msg=f"run failed:\n{ran.stdout}\n{ran.stderr}")
+            self.assertEqual(ran.stdout, "include-ok\n")
+
+    def test_module_root_ambiguous_module_fails(self) -> None:
+        repo_root = Path(__file__).resolve().parent.parent
+        env = os.environ.copy()
+        src_path = str(repo_root / "src")
+        env["PYTHONPATH"] = src_path if not env.get("PYTHONPATH") else f"{src_path}:{env['PYTHONPATH']}"
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            scripts = root / "scripts"
+            left = root / "left" / "dup"
+            right = root / "right" / "dup"
+            scripts.mkdir()
+            left.mkdir(parents=True)
+            right.mkdir(parents=True)
+            (scripts / "main.py").write_text("import dup\nprint(dup.VALUE)\n", encoding="utf-8")
+            (left / "__init__.py").write_text("VALUE = 'left'\n", encoding="utf-8")
+            (right / "__init__.py").write_text("VALUE = 'right'\n", encoding="utf-8")
+
+            built = subprocess.run(
+                [
+                    "python",
+                    "-m",
+                    "pyfuse.cli",
+                    "build",
+                    str(scripts / "main.py"),
+                    "-o",
+                    str(root / "out.py"),
+                    "--module-root",
+                    str(root / "left"),
+                    "--module-root",
+                    str(root / "right"),
+                ],
+                cwd=repo_root,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(built.returncode, 0)
+            self.assertIn("ambiguous local module", built.stdout + built.stderr)
 
 
 if __name__ == "__main__":

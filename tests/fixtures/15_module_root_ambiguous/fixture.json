@@ -1,0 +1,7 @@
+{
+  "entry": "scripts/main.py",
+  "original": {"cmd": ["python", "scripts/main.py"]},
+  "module_roots": ["left", "right"],
+  "expect_bundle_success": false,
+  "expected_error_contains": "ambiguous local module"
+}

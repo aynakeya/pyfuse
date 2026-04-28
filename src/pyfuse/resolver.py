@@ -12,6 +12,7 @@ class ResolvedModule:
     name: str
     path: Path
     is_package: bool
+    root_dir: Path
 
 
 @dataclass(frozen=True)
@@ -48,10 +49,19 @@ def _module_name_to_paths(root_dir: Path, module_name: str) -> tuple[Path, Path]
 def resolve_module(root_dir: Path, module_name: str) -> ResolvedModule | None:
     file_path, package_init = _module_name_to_paths(root_dir, module_name)
     if file_path.exists():
-        return ResolvedModule(module_name, file_path, False)
+        return ResolvedModule(module_name, file_path, False, root_dir)
     if package_init.exists():
-        return ResolvedModule(module_name, package_init, True)
+        return ResolvedModule(module_name, package_init, True, root_dir)
     return None
+
+
+def resolve_module_in_roots(search_roots: list[Path], module_name: str) -> ResolvedModule | None:
+    matches = [resolved for root in search_roots if (resolved := resolve_module(root, module_name))]
+    unique: dict[Path, ResolvedModule] = {match.path.resolve(): match for match in matches}
+    if len(unique) > 1:
+        locations = ", ".join(str(path) for path in sorted(unique.keys()))
+        raise ResolutionError(f"ambiguous local module '{module_name}' found at: {locations}")
+    return next(iter(unique.values()), None)
 
 
 def parent_packages(module_name: str) -> list[str]:
@@ -101,6 +111,7 @@ def _join_module(base: str, suffix: str | None) -> str:
 def resolve_local_dependencies(
     *,
     root_dir: Path,
+    search_roots: list[Path] | None = None,
     current_module: str,
     current_is_package: bool,
     req_module: str | None,
@@ -110,6 +121,7 @@ def resolve_local_dependencies(
 ) -> set[str]:
     return resolve_import_request(
         root_dir=root_dir,
+        search_roots=search_roots,
         current_module=current_module,
         current_is_package=current_is_package,
         req_module=req_module,
@@ -122,6 +134,7 @@ def resolve_local_dependencies(
 def resolve_import_request(
     *,
     root_dir: Path,
+    search_roots: list[Path] | None = None,
     current_module: str,
     current_is_package: bool,
     req_module: str | None,
@@ -131,6 +144,7 @@ def resolve_import_request(
 ) -> ImportResolution:
     local_deps: set[str] = set()
     skipped: list[SkippedImport] = []
+    roots = search_roots or [root_dir]
 
     if req_level > 0:
         base = resolve_relative_base(current_module, current_is_package, req_level)
@@ -140,13 +154,13 @@ def resolve_import_request(
 
     abs_module_is_local = False
     if abs_module:
-        resolved = resolve_module(root_dir, abs_module)
+        resolved = resolve_module_in_roots(roots, abs_module)
         if resolved is not None:
             abs_module_is_local = True
-            ensure_no_namespace_parents(root_dir, abs_module)
+            ensure_no_namespace_parents(resolved.root_dir, abs_module)
             local_deps.add(abs_module)
             for pkg in parent_packages(abs_module):
-                if resolve_module(root_dir, pkg) is not None:
+                if resolve_module_in_roots(roots, pkg) is not None:
                     local_deps.add(pkg)
         else:
             skipped.append(SkippedImport(module=abs_module, reason="not-local-or-missing"))
@@ -164,11 +178,11 @@ def resolve_import_request(
                 )
                 continue
         candidate = _join_module(abs_module, name)
-        if candidate and resolve_module(root_dir, candidate) is not None:
-            ensure_no_namespace_parents(root_dir, candidate)
+        if candidate and (candidate_resolved := resolve_module_in_roots(roots, candidate)) is not None:
+            ensure_no_namespace_parents(candidate_resolved.root_dir, candidate)
             local_deps.add(candidate)
             for pkg in parent_packages(candidate):
-                if resolve_module(root_dir, pkg) is not None:
+                if resolve_module_in_roots(roots, pkg) is not None:
                     local_deps.add(pkg)
         elif candidate:
             skipped.append(SkippedImport(module=candidate, reason="not-local-or-missing"))

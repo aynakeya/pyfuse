@@ -22,6 +22,9 @@
 - 支持可静态判定的动态导入：
   - `__import__("module.name")`
   - `importlib.import_module("module.name")`
+- 支持额外本地源码根：
+  - `--module-root PATH`
+  - `--include MODULE_OR_PACKAGE`
 - 支持 `--report` 输出 JSON 构建报告（打包模块、跳过模块及原因、依赖摘要）。
 - 遇到不支持能力时显式报错（例如动态导入参数不是常量字符串）。
 
@@ -46,7 +49,19 @@ pyfuse build path/to/main.py -o dist/app.py
 
 CLI：
 ```text
-pyfuse build ENTRY.py -o OUTPUT.py [--debug] [--verbose] [--report REPORT.json]
+pyfuse build ENTRY.py -o OUTPUT.py [--debug] [--verbose] [--report REPORT.json] [--module-root PATH] [--include MODULE]
+```
+
+`--module-root` 用来声明额外的本地用户代码根目录。例如入口在 `scripts/s1/main.py`，包在 `src/package_a`：
+
+```bash
+pyfuse build scripts/s1/main.py -o dist/s1.py --module-root src
+```
+
+`--include` 会从入口根和 `--module-root` 中强制打包指定模块或包。指定包时会包含整个包树，适合用户已确认的插件或动态依赖：
+
+```bash
+pyfuse build scripts/s1/main.py -o dist/s1.py --module-root src --include package_a
 ```
 
 `--report` JSON 关键字段：
@@ -54,6 +69,9 @@ pyfuse build ENTRY.py -o OUTPUT.py [--debug] [--verbose] [--report REPORT.json]
 - `skipped_imports`: 未打包 import 及原因（如 `not-local-or-missing`、`name-defined-in-module`）
 - `dependency_edges`: 依赖边数量
 - `module_dependencies`: 每个模块的本地依赖
+- `module_roots`: 用户显式声明的额外本地源码根
+- `includes`: 用户显式 include 的模块或包
+- `module_origins`: 每个被打包模块来自哪个本地根
 
 ## 设计概览
 
@@ -104,6 +122,9 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 11. import-time side effects
 12. 深层相对导入
 13. 脱离原工程目录运行 bundled 文件
+14. `--module-root` 跨目录本地包
+15. `--include` 动态本地包树
+16. 多个 module root 下同名模块歧义失败
 
 ## 已知限制
 
