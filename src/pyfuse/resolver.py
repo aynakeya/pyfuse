@@ -48,10 +48,12 @@ def _module_name_to_paths(root_dir: Path, module_name: str) -> tuple[Path, Path]
 
 def resolve_module(root_dir: Path, module_name: str) -> ResolvedModule | None:
     file_path, package_init = _module_name_to_paths(root_dir, module_name)
-    if file_path.exists():
-        return ResolvedModule(module_name, file_path, False, root_dir)
+    # Match Python's import resolution for a path entry: a package directory
+    # wins over a same-named .py file.
     if package_init.exists():
         return ResolvedModule(module_name, package_init, True, root_dir)
+    if file_path.exists():
+        return ResolvedModule(module_name, file_path, False, root_dir)
     return None
 
 

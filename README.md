@@ -163,6 +163,7 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 - 不支持 namespace package（缺少 `__init__.py` 的包目录），会在构建阶段显式报错。
 - 对复杂运行时 import 魔改（例如动态改 `sys.meta_path`）不保证兼容。
 - `from pkg import name` 在静态分析上无法总是区分属性与子模块，当前实现会尽力解析可定位的本地子模块。
+- 同一路径根下如果同时存在 `pkg/mod.py` 和 `pkg/mod/__init__.py`，pyfuse 会按 Python import 规则选择 `pkg/mod/__init__.py`；被遮蔽的 `pkg/mod.py` 不会作为 `pkg.mod` 打包。
 
 ## 示例
 

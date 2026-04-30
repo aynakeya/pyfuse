@@ -50,6 +50,27 @@ class GraphTests(unittest.TestCase):
             self.assertIn("pkg", graph.modules)
             self.assertNotIn("pkg.value", graph.modules)
 
+    def test_include_package_prefers_package_over_same_named_module(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            scripts = root / "scripts"
+            src = root / "src"
+            pkg = src / "pkg"
+            scripts.mkdir(parents=True)
+            pkg.mkdir(parents=True)
+            (scripts / "main.py").write_text("print('entry')\n", encoding="utf-8")
+            (pkg / "__init__.py").write_text("", encoding="utf-8")
+            (pkg / "deep.py").write_text("KIND = 'module'\n", encoding="utf-8")
+            deep_pkg = pkg / "deep"
+            deep_pkg.mkdir()
+            (deep_pkg / "__init__.py").write_text("KIND = 'package'\n", encoding="utf-8")
+
+            graph = build_graph(root / "scripts", "main", module_roots=[src], include_packages=["pkg"])
+
+            self.assertIn("pkg.deep", graph.modules)
+            self.assertTrue(graph.modules["pkg.deep"].is_package)
+            self.assertEqual(graph.modules["pkg.deep"].source.strip(), "KIND = 'package'")
+
 
 if __name__ == "__main__":
     unittest.main()
