@@ -68,7 +68,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.debug:
                 traceback.print_exc()
             return 2
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             print(f"pyfuse: internal error: {exc}")
             if args.debug:
                 traceback.print_exc()

@@ -11,6 +11,12 @@ requires-python = ">=3.9"
 authors = [{name = "pyfuse"}]
 license = {text = "MIT"}
 
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.20.2",
+    "ruff>=0.15.12",
+]
+
 [project.scripts]
 pyfuse = "pyfuse.cli:main"
 
@@ -19,3 +25,22 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 120
+src = ["src", "tests"]
+exclude = [
+    "tests/fixtures",
+    "tests/extra/fixtures",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "RUF"]
+
+[tool.mypy]
+python_version = "3.9"
+files = ["src/pyfuse"]
+strict = true
+warn_unused_ignores = true
+show_error_codes = true

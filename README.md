@@ -49,6 +49,11 @@ pip install -e .
 pyfuse build path/to/main.py -o dist/app.py
 ```
 
+安装开发检查工具：
+```bash
+pip install -e ".[dev]"
+```
+
 CLI：
 ```text
 pyfuse build ENTRY.py -o OUTPUT.py [--debug] [--verbose] [--report REPORT.json] [--module-root PATH] [--include-module MODULE] [--include-package PACKAGE]
@@ -129,6 +134,12 @@ python -m py_compile /tmp/pyfuse-demo.py
 运行测试：
 ```bash
 PYTHONPATH=src python -m unittest discover -s tests -v
+```
+
+代码质量检查：
+```bash
+ruff check .
+mypy
 ```
 
 集成测试覆盖 fixtures：

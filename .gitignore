@@ -3,3 +3,6 @@
 __pycache__
 *.pyc
 dist
+.venv
+.uv-cache
+*.egg-info
