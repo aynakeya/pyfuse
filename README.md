@@ -64,6 +64,16 @@ pyfuse build scripts/s1/main.py -o dist/s1.py --module-root src
 pyfuse build scripts/s1/main.py -o dist/s1.py --module-root src --include package_a
 ```
 
+一个完整场景（入口在 `scripts/`，本地包在 `src/`，并且插件通过动态导入触发）：
+
+```bash
+pyfuse build scripts/s1/main.py -o dist/s1.py \
+  --module-root src \
+  --include package_a \
+  --report dist/s1.report.json
+python dist/s1.py
+```
+
 `--report` JSON 关键字段：
 - `bundled_modules`: 被打包的本地模块列表
 - `skipped_imports`: 未打包 import 及原因（如 `not-local-or-missing`、`name-defined-in-module`）

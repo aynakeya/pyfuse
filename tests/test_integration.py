@@ -208,6 +208,45 @@ class IntegrationTests(unittest.TestCase):
             self.assertIn("includes", report)
             self.assertIn("module_origins", report)
 
+    def test_build_report_tracks_module_origins_for_module_root(self) -> None:
+        repo_root = Path(__file__).resolve().parent.parent
+        env = os.environ.copy()
+        src_path = str(repo_root / "src")
+        env["PYTHONPATH"] = src_path if not env.get("PYTHONPATH") else f"{src_path}:{env['PYTHONPATH']}"
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            scripts = root / "scripts"
+            local_src = root / "src"
+            package = local_src / "package_a"
+            scripts.mkdir(parents=True)
+            package.mkdir(parents=True)
+            (scripts / "main.py").write_text("from package_a import value\nprint(value())\n", encoding="utf-8")
+            (package / "__init__.py").write_text("from .core import value\n", encoding="utf-8")
+            (package / "core.py").write_text("def value():\n    return 'origin-ok'\n", encoding="utf-8")
+            report_path = root / "report.json"
+
+            bundle_cmd = [
+                "python",
+                "-m",
+                "pyfuse.cli",
+                "build",
+                str(scripts / "main.py"),
+                "-o",
+                str(root / "compiled.py"),
+                "--module-root",
+                str(local_src),
+                "--report",
+                str(report_path),
+            ]
+            built = subprocess.run(bundle_cmd, cwd=repo_root, env=env, text=True, capture_output=True, check=False)
+            self.assertEqual(built.returncode, 0, msg=f"bundle failed:\n{built.stdout}\n{built.stderr}")
+
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            origins = report["module_origins"]
+            self.assertIn("package_a", origins)
+            self.assertEqual(origins["package_a"], str(local_src.resolve()))
+
     def test_bundled_file_runs_outside_project_directory(self) -> None:
         repo_root = Path(__file__).resolve().parent.parent
         env = os.environ.copy()
