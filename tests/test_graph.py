@@ -23,7 +23,7 @@ class GraphTests(unittest.TestCase):
     def test_build_graph_rejects_dynamic_import(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            (root / "main.py").write_text("name='helper'\n__import__(name)\n", encoding="utf-8")
+            (root / "main.py").write_text("name='helper'\nname='other'\n__import__(name)\n", encoding="utf-8")
             (root / "helper.py").write_text("x=1\n", encoding="utf-8")
 
             with self.assertRaises(UnsupportedFeatureError):

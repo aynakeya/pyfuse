@@ -26,7 +26,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--include",
         action="append",
         default=[],
-        help="Additional local module/package to bundle from module roots; can be used multiple times",
+        help="Legacy alias for --include-package; can be used multiple times",
+    )
+    build.add_argument(
+        "--include-module",
+        action="append",
+        default=[],
+        help="Additional exact local module to bundle from module roots; can be used multiple times",
+    )
+    build.add_argument(
+        "--include-package",
+        action="append",
+        default=[],
+        help="Additional local package tree to bundle from module roots; can be used multiple times",
     )
     build.add_argument("--report", type=Path, help="Write JSON build report")
     build.add_argument("--debug", action="store_true", help="Show traceback for failures")
@@ -41,12 +53,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "build":
         try:
             logger = (lambda msg: print(f"[pyfuse] {msg}")) if args.verbose else None
+            include_packages = [*args.include_package, *args.include]
             result = bundle_project(
                 args.entry,
                 args.output,
                 report_path=args.report,
                 module_roots=args.module_root,
-                includes=args.include,
+                include_modules=args.include_module,
+                include_packages=include_packages,
                 logger=logger,
             )
         except PyfuseError as exc:

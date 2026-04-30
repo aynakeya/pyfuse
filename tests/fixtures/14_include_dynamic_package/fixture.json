@@ -3,6 +3,6 @@
   "original": {"cmd": ["python", "scripts/s1/main.py"]},
   "original_pythonpath": ["src"],
   "module_roots": ["src"],
-  "includes": ["package_a"],
+  "include_packages": ["package_a"],
   "expect_bundle_success": true
 }

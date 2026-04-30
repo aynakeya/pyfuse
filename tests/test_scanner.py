@@ -31,13 +31,24 @@ from .sub import y
         self.assertIn(("sub", ("y",), 1), got)
 
     def test_detect_dynamic_import_with_non_constant_module_raises(self) -> None:
-        tree = ast.parse("name = 'x'\n__import__(name)")
+        tree = ast.parse("name = ''.join(['x'])\n__import__(name)")
         with self.assertRaises(UnsupportedFeatureError):
             detect_unsupported_dynamic_imports(tree, Path("main.py"))
 
     def test_detect_constant_dynamic_import_is_supported(self) -> None:
         tree = ast.parse("import importlib\nimportlib.import_module('x.y')")
         detect_unsupported_dynamic_imports(tree, Path("main.py"))
+
+    def test_detect_top_level_constant_dynamic_import_is_supported(self) -> None:
+        tree = ast.parse("import importlib\nPLUGIN = 'x.y'\nimportlib.import_module(PLUGIN)")
+        detect_unsupported_dynamic_imports(tree, Path("main.py"))
+        imports = extract_imports(tree)
+        self.assertIn(("x.y", (), 0), [(i.module, i.names, i.level) for i in imports])
+
+    def test_reassigned_constant_dynamic_import_raises(self) -> None:
+        tree = ast.parse("import importlib\nPLUGIN = 'x.y'\nPLUGIN = 'z'\nimportlib.import_module(PLUGIN)")
+        with self.assertRaises(UnsupportedFeatureError):
+            detect_unsupported_dynamic_imports(tree, Path("main.py"))
 
     def test_detect_alias_importlib_dynamic_import_raises(self) -> None:
         tree = ast.parse("import importlib as il\nil.import_module('x.y')")

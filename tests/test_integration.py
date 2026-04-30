@@ -57,6 +57,10 @@ class IntegrationTests(unittest.TestCase):
             bundle_cmd.extend(["--module-root", str(project_dir / module_root)])
         for include in cfg.get("includes", []):
             bundle_cmd.extend(["--include", include])
+        for include in cfg.get("include_modules", []):
+            bundle_cmd.extend(["--include-module", include])
+        for include in cfg.get("include_packages", []):
+            bundle_cmd.extend(["--include-package", include])
         built = subprocess.run(bundle_cmd, cwd=repo_root, env=env, text=True, capture_output=True, check=False)
 
         if cfg["expect_bundle_success"]:
@@ -205,8 +209,11 @@ class IntegrationTests(unittest.TestCase):
             self.assertIn("main", report["bundled_modules"])
             self.assertIn("helper", report["bundled_modules"])
             self.assertIn("module_roots", report)
-            self.assertIn("includes", report)
             self.assertIn("module_origins", report)
+            self.assertIn("included_modules_exact", report)
+            self.assertIn("included_packages_tree", report)
+            self.assertIn("uncertain_imports", report)
+            self.assertIn("risk_level", report)
 
     def test_build_report_tracks_module_origins_for_module_root(self) -> None:
         repo_root = Path(__file__).resolve().parent.parent
@@ -246,6 +253,58 @@ class IntegrationTests(unittest.TestCase):
             origins = report["module_origins"]
             self.assertIn("package_a", origins)
             self.assertEqual(origins["package_a"], str(local_src.resolve()))
+
+    def test_include_module_report_does_not_bundle_entire_package_tree(self) -> None:
+        repo_root = Path(__file__).resolve().parent.parent
+        env = os.environ.copy()
+        src_path = str(repo_root / "src")
+        env["PYTHONPATH"] = src_path if not env.get("PYTHONPATH") else f"{src_path}:{env['PYTHONPATH']}"
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            scripts = root / "scripts"
+            local_src = root / "src"
+            package = local_src / "package_a"
+            scripts.mkdir(parents=True)
+            package.mkdir(parents=True)
+            (scripts / "main.py").write_text(
+                "import importlib\nPLUGIN = 'package_a.plugin'\nprint(importlib.import_module(PLUGIN).run())\n",
+                encoding="utf-8",
+            )
+            (package / "__init__.py").write_text("", encoding="utf-8")
+            (package / "plugin.py").write_text("def run():\n    return 'exact-report'\n", encoding="utf-8")
+            (package / "unused.py").write_text("VALUE = 'unused'\n", encoding="utf-8")
+            report_path = root / "report.json"
+
+            built = subprocess.run(
+                [
+                    "python",
+                    "-m",
+                    "pyfuse.cli",
+                    "build",
+                    str(scripts / "main.py"),
+                    "-o",
+                    str(root / "compiled.py"),
+                    "--module-root",
+                    str(local_src),
+                    "--include-module",
+                    "package_a.plugin",
+                    "--report",
+                    str(report_path),
+                ],
+                cwd=repo_root,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(built.returncode, 0, msg=f"bundle failed:\n{built.stdout}\n{built.stderr}")
+
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            self.assertIn("package_a.plugin", report["bundled_modules"])
+            self.assertNotIn("package_a.unused", report["bundled_modules"])
+            self.assertEqual(report["included_modules_exact"], ["package_a.plugin"])
+            self.assertEqual(report["risk_level"], "low")
 
     def test_bundled_file_runs_outside_project_directory(self) -> None:
         repo_root = Path(__file__).resolve().parent.parent
@@ -388,7 +447,7 @@ class IntegrationTests(unittest.TestCase):
                     str(bundled_path),
                     "--module-root",
                     str(root / "src"),
-                    "--include",
+                    "--include-package",
                     "package_a",
                 ],
                 cwd=repo_root,

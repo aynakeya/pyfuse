@@ -14,6 +14,7 @@ def parse_source(path: Path) -> ast.Module:
 
 def extract_imports(tree: ast.AST) -> list[ImportRequest]:
     imports: list[ImportRequest] = []
+    constants = _collect_top_level_string_constants(tree)
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -35,7 +36,7 @@ def extract_imports(tree: ast.AST) -> list[ImportRequest]:
                     )
                 )
         elif isinstance(node, ast.Call):
-            dyn_req = _extract_static_dynamic_import(node)
+            dyn_req = _extract_static_dynamic_import(node, constants=constants)
             if dyn_req is not None:
                 imports.append(dyn_req)
     return imports
@@ -67,6 +68,7 @@ def detect_unsupported_dynamic_imports(
     allow_unresolved_dynamic_imports: bool = False,
 ) -> None:
     importlib_aliases, dunder_import_aliases = _collect_dynamic_import_aliases(tree)
+    constants = _collect_top_level_string_constants(tree)
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
@@ -97,6 +99,7 @@ def detect_unsupported_dynamic_imports(
             node,
             path=path,
             allow_unresolved_dynamic_imports=allow_unresolved_dynamic_imports,
+            constants=constants,
         )
 
 
@@ -104,6 +107,42 @@ def _extract_constant_str(node: ast.AST | None) -> str | None:
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
     return None
+
+
+def _extract_static_module_name(node: ast.AST | None, constants: dict[str, str]) -> str | None:
+    literal = _extract_constant_str(node)
+    if literal is not None:
+        return literal
+    if isinstance(node, ast.Name):
+        return constants.get(node.id)
+    return None
+
+
+def _collect_top_level_string_constants(tree: ast.AST) -> dict[str, str]:
+    if not isinstance(tree, ast.Module):
+        return {}
+
+    values: dict[str, str] = {}
+    invalid: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+            value = _extract_constant_str(node.value)
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+            value = _extract_constant_str(node.value)
+        else:
+            continue
+
+        for target in targets:
+            if not isinstance(target, ast.Name):
+                continue
+            if target.id in values or value is None:
+                values.pop(target.id, None)
+                invalid.add(target.id)
+            elif target.id not in invalid:
+                values[target.id] = value
+    return values
 
 
 def _collect_dynamic_import_aliases(tree: ast.AST) -> tuple[set[str], set[str]]:
@@ -147,9 +186,11 @@ def _extract_static_dynamic_import(
     node: ast.Call,
     path: Path | None = None,
     allow_unresolved_dynamic_imports: bool = False,
+    constants: dict[str, str] | None = None,
 ) -> ImportRequest | None:
     lineno = getattr(node, "lineno", 0)
     func = node.func
+    constants = constants or {}
 
     if isinstance(func, ast.Name) and func.id == "__import__":
         if not node.args:
@@ -160,7 +201,7 @@ def _extract_static_dynamic_import(
                 file=path,
                 lineno=lineno,
             )
-        module_name = _extract_constant_str(node.args[0])
+        module_name = _extract_static_module_name(node.args[0], constants)
         if module_name is None:
             if path is None or allow_unresolved_dynamic_imports:
                 return None
@@ -195,7 +236,7 @@ def _extract_static_dynamic_import(
                 lineno=lineno,
             )
 
-        module_name = _extract_constant_str(node.args[0])
+        module_name = _extract_static_module_name(node.args[0], constants)
         if module_name is None:
             if path is None or allow_unresolved_dynamic_imports:
                 return None

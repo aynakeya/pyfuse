@@ -34,13 +34,16 @@ def build_graph(
     root_dir: Path,
     entry_module: str,
     module_roots: list[Path] | None = None,
-    includes: list[str] | None = None,
+    include_modules: list[str] | None = None,
+    include_packages: list[str] | None = None,
     logger: Callable[[str], None] | None = None,
 ) -> ModuleGraph:
     modules: dict[str, ModuleInfo] = {}
     skipped_imports: list[tuple[str, int, str, str]] = []
     search_roots = _dedupe_roots([root_dir, *(module_roots or [])])
-    include_names = includes or []
+    include_module_names = include_modules or []
+    include_package_names = include_packages or []
+    has_includes = bool(include_module_names or include_package_names)
 
     entry_resolved = resolve_module(root_dir, entry_module)
     if entry_resolved is None:
@@ -53,11 +56,22 @@ def build_graph(
         modules,
         skipped_imports,
         defined_names_cache={},
-        allow_unresolved_dynamic_imports=bool(include_names),
+        allow_unresolved_dynamic_imports=has_includes,
         logger=logger,
     )
-    for include in include_names:
-        _include_module_tree(
+    for include in include_module_names:
+        _include_exact_module(
+            root_dir,
+            search_roots,
+            include,
+            modules,
+            skipped_imports,
+            defined_names_cache={},
+            allow_unresolved_dynamic_imports=True,
+            logger=logger,
+        )
+    for include in include_package_names:
+        _include_package_tree(
             root_dir,
             search_roots,
             include,
@@ -156,7 +170,7 @@ def _visit_module(
                 )
 
 
-def _include_module_tree(
+def _include_exact_module(
     root_dir: Path,
     search_roots: list[Path],
     module_name: str,
@@ -169,30 +183,6 @@ def _include_module_tree(
     resolved = resolve_module_in_roots(search_roots, module_name)
     if resolved is None:
         raise ResolutionError(f"included module '{module_name}' was not found in local module roots")
-
-    if resolved.is_package:
-        package_dir = resolved.path.parent
-        for path in sorted(package_dir.rglob("*.py")):
-            if "__pycache__" in path.parts:
-                continue
-            rel = path.relative_to(resolved.root_dir)
-            parts = list(rel.with_suffix("").parts)
-            if parts[-1] == "__init__":
-                parts = parts[:-1]
-            child_name = ".".join(parts)
-            child_resolved = resolve_module(resolved.root_dir, child_name)
-            if child_resolved is not None:
-                _visit_module(
-                    root_dir,
-                    search_roots,
-                    child_resolved,
-                    modules,
-                    skipped_imports,
-                    defined_names_cache,
-                    allow_unresolved_dynamic_imports=allow_unresolved_dynamic_imports,
-                    logger=logger,
-                )
-        return
 
     for package_name in parent_packages(module_name):
         package_resolved = resolve_module_in_roots(search_roots, package_name)
@@ -218,6 +208,45 @@ def _include_module_tree(
         allow_unresolved_dynamic_imports=allow_unresolved_dynamic_imports,
         logger=logger,
     )
+
+
+def _include_package_tree(
+    root_dir: Path,
+    search_roots: list[Path],
+    package_name: str,
+    modules: dict[str, ModuleInfo],
+    skipped_imports: list[tuple[str, int, str, str]],
+    defined_names_cache: dict[str, set[str]],
+    allow_unresolved_dynamic_imports: bool,
+    logger: Callable[[str], None] | None,
+) -> None:
+    resolved = resolve_module_in_roots(search_roots, package_name)
+    if resolved is None:
+        raise ResolutionError(f"included package '{package_name}' was not found in local module roots")
+    if not resolved.is_package:
+        raise ResolutionError(f"included package '{package_name}' is not a package")
+
+    package_dir = resolved.path.parent
+    for path in sorted(package_dir.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        rel = path.relative_to(resolved.root_dir)
+        parts = list(rel.with_suffix("").parts)
+        if parts[-1] == "__init__":
+            parts = parts[:-1]
+        child_name = ".".join(parts)
+        child_resolved = resolve_module(resolved.root_dir, child_name)
+        if child_resolved is not None:
+            _visit_module(
+                root_dir,
+                search_roots,
+                child_resolved,
+                modules,
+                skipped_imports,
+                defined_names_cache,
+                allow_unresolved_dynamic_imports=allow_unresolved_dynamic_imports,
+                logger=logger,
+            )
 
 
 def _dedupe_roots(roots: list[Path]) -> list[Path]:

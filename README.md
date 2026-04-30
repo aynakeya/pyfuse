@@ -22,10 +22,12 @@
 - 支持可静态判定的动态导入：
   - `__import__("module.name")`
   - `importlib.import_module("module.name")`
+  - `__import__(NAME)` / `importlib.import_module(NAME)`，其中 `NAME` 是同文件顶层单次赋值的字符串常量
 - 支持额外本地源码根：
   - `--module-root PATH`
-  - `--include MODULE_OR_PACKAGE`
-- 支持 `--report` 输出 JSON 构建报告（打包模块、跳过模块及原因、依赖摘要）。
+  - `--include-module MODULE`
+  - `--include-package PACKAGE`
+- 支持 `--report` 输出 JSON 构建报告（打包模块、跳过模块及原因、依赖摘要、风险等级）。
 - 遇到不支持能力时显式报错（例如动态导入参数不是常量字符串）。
 
 ## 非目标（当前阶段）
@@ -49,7 +51,7 @@ pyfuse build path/to/main.py -o dist/app.py
 
 CLI：
 ```text
-pyfuse build ENTRY.py -o OUTPUT.py [--debug] [--verbose] [--report REPORT.json] [--module-root PATH] [--include MODULE]
+pyfuse build ENTRY.py -o OUTPUT.py [--debug] [--verbose] [--report REPORT.json] [--module-root PATH] [--include-module MODULE] [--include-package PACKAGE]
 ```
 
 `--module-root` 用来声明额外的本地用户代码根目录。例如入口在 `scripts/s1/main.py`，包在 `src/package_a`：
@@ -58,18 +60,26 @@ pyfuse build ENTRY.py -o OUTPUT.py [--debug] [--verbose] [--report REPORT.json] 
 pyfuse build scripts/s1/main.py -o dist/s1.py --module-root src
 ```
 
-`--include` 会从入口根和 `--module-root` 中强制打包指定模块或包。指定包时会包含整个包树，适合用户已确认的插件或动态依赖：
+`--include-module` 会从入口根和 `--module-root` 中精确打包指定模块，以及它的静态依赖：
 
 ```bash
-pyfuse build scripts/s1/main.py -o dist/s1.py --module-root src --include package_a
+pyfuse build scripts/s1/main.py -o dist/s1.py --module-root src --include-module package_a.plugin
 ```
+
+`--include-package` 会打包整个包树，适合用户已确认的目录扫描式插件或动态依赖：
+
+```bash
+pyfuse build scripts/s1/main.py -o dist/s1.py --module-root src --include-package package_a
+```
+
+`--include` 仍可使用，但只是 `--include-package` 的别名。
 
 一个完整场景（入口在 `scripts/`，本地包在 `src/`，并且插件通过动态导入触发）：
 
 ```bash
 pyfuse build scripts/s1/main.py -o dist/s1.py \
   --module-root src \
-  --include package_a \
+  --include-package package_a \
   --report dist/s1.report.json
 python dist/s1.py
 ```
@@ -80,8 +90,11 @@ python dist/s1.py
 - `dependency_edges`: 依赖边数量
 - `module_dependencies`: 每个模块的本地依赖
 - `module_roots`: 用户显式声明的额外本地源码根
-- `includes`: 用户显式 include 的模块或包
+- `included_modules_exact`: 用户用 `--include-module` 精确包含的模块
+- `included_packages_tree`: 用户用 `--include-package` 包树包含的包
 - `module_origins`: 每个被打包模块来自哪个本地根
+- `risk_level`: 构建风险等级
+- `uncertain_imports`: 未打包或不确定 import 的诊断记录
 
 ## 设计概览
 
@@ -133,14 +146,17 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 12. 深层相对导入
 13. 脱离原工程目录运行 bundled 文件
 14. `--module-root` 跨目录本地包
-15. `--include` 动态本地包树
+15. `--include-package` 动态本地包树
 16. 多个 module root 下同名模块歧义失败
+17. `--include-module` 精确包含模块
+18. `--include-package` 指向普通模块时失败
+19. 顶层字符串常量动态导入
 
 ## 已知限制
 
 - 仅支持常量字符串动态导入；以下仍不支持：
   - `__import__(name_var)`
-  - `importlib.import_module(name_var)`
+  - `importlib.import_module(name_var)`，除非 `name_var` 是同文件顶层单次赋值的字符串常量
   - 别名形式动态导入（如 `import importlib as il; il.import_module("x")`、`_import = __import__; _import("x")`）
   - 相对动态导入（如 `importlib.import_module(".x", "pkg")`）
 - 不支持打包 C 扩展模块（`.so` / `.pyd`）。

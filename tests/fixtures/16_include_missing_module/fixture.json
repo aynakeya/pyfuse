@@ -1,7 +1,7 @@
 {
   "entry": "main.py",
   "original": {"cmd": ["python", "main.py"]},
-  "includes": ["not_found_pkg"],
+  "include_modules": ["not_found_pkg"],
   "expect_bundle_success": false,
   "expected_error_contains": "included module 'not_found_pkg' was not found"
 }

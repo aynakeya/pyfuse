@@ -15,7 +15,8 @@ class BundleResult:
     entry_path: Path
     root_dir: Path
     module_roots: list[Path]
-    includes: list[str]
+    include_modules: list[str]
+    include_packages: list[str]
     entry_module: str
     graph: ModuleGraph
     output_path: Path
@@ -27,13 +28,15 @@ def bundle_project(
     output_path: Path,
     report_path: Path | None = None,
     module_roots: list[Path] | None = None,
-    includes: list[str] | None = None,
+    include_modules: list[str] | None = None,
+    include_packages: list[str] | None = None,
     logger: Callable[[str], None] | None = None,
 ) -> BundleResult:
     entry_file = entry_file.resolve()
     output_path = output_path.resolve()
     extra_module_roots = [root.resolve() for root in (module_roots or [])]
-    include_names = includes or []
+    include_module_names = include_modules or []
+    include_package_names = include_packages or []
 
     if logger is not None:
         logger(f"entry file: {entry_file}")
@@ -43,15 +46,18 @@ def bundle_project(
         logger(f"root dir:   {root_dir}")
         for module_root in extra_module_roots:
             logger(f"module root: {module_root}")
-        for include in include_names:
-            logger(f"include:   {include}")
+        for include in include_module_names:
+            logger(f"include module: {include}")
+        for include in include_package_names:
+            logger(f"include package: {include}")
         logger(f"entry mod:  {entry_module}")
 
     graph = build_graph(
         root_dir,
         entry_module,
         module_roots=extra_module_roots,
-        includes=include_names,
+        include_modules=include_module_names,
+        include_packages=include_package_names,
         logger=logger,
     )
     if logger is not None:
@@ -66,7 +72,8 @@ def bundle_project(
         entry_path=entry_file,
         root_dir=root_dir,
         module_roots=extra_module_roots,
-        includes=include_names,
+        include_modules=include_module_names,
+        include_packages=include_package_names,
         entry_module=entry_module,
         output_path=output_path,
         graph=graph,
@@ -82,7 +89,8 @@ def bundle_project(
         entry_path=entry_file,
         root_dir=root_dir,
         module_roots=extra_module_roots,
-        includes=include_names,
+        include_modules=include_module_names,
+        include_packages=include_package_names,
         entry_module=entry_module,
         graph=graph,
         output_path=output_path,
@@ -95,7 +103,8 @@ def _build_report(
     entry_path: Path,
     root_dir: Path,
     module_roots: list[Path],
-    includes: list[str],
+    include_modules: list[str],
+    include_packages: list[str],
     entry_module: str,
     output_path: Path,
     graph: ModuleGraph,
@@ -118,12 +127,14 @@ def _build_report(
         }
         for importer, lineno, module, reason in graph.skipped_imports
     ]
+    risk_level, risk_reasons = _compute_risk(include_modules, include_packages, skipped)
     return {
         "entry_path": str(entry_path),
         "entry_module": entry_module,
         "root_dir": str(root_dir),
         "module_roots": [str(root) for root in module_roots],
-        "includes": includes,
+        "included_modules_exact": include_modules,
+        "included_packages_tree": include_packages,
         "output_path": str(output_path),
         "bundled_modules": sorted(graph.modules.keys()),
         "bundled_module_count": len(graph.modules),
@@ -132,6 +143,9 @@ def _build_report(
         "dependency_edges": dependency_edges,
         "module_dependencies": module_dependencies,
         "module_origins": module_origins,
+        "uncertain_imports": skipped,
+        "risk_level": risk_level,
+        "risk_reasons": risk_reasons,
     }
 
 
@@ -145,3 +159,19 @@ def _find_module_origin(path: Path, roots: list[Path]) -> str:
             continue
         return str(resolved_root)
     return ""
+
+
+def _compute_risk(
+    include_modules: list[str],
+    include_packages: list[str],
+    skipped: list[dict[str, object]],
+) -> tuple[str, list[str]]:
+    reasons: list[str] = []
+    if include_packages:
+        reasons.append("package-tree includes may bundle modules not statically imported")
+    if include_modules:
+        reasons.append("exact module includes were supplied by user")
+
+    if include_packages:
+        return "medium", reasons
+    return "low", reasons

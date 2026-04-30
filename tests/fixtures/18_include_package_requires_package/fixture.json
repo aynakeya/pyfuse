@@ -1,0 +1,7 @@
+{
+  "entry": "main.py",
+  "original": {"cmd": ["python", "main.py"]},
+  "include_packages": ["standalone"],
+  "expect_bundle_success": false,
+  "expected_error_contains": "included package 'standalone' is not a package"
+}

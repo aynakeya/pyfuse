@@ -1,0 +1,8 @@
+{
+  "entry": "scripts/main.py",
+  "original": {"cmd": ["python", "scripts/main.py"]},
+  "original_pythonpath": ["src"],
+  "module_roots": ["src"],
+  "include_modules": ["package_a.plugin"],
+  "expect_bundle_success": true
+}
