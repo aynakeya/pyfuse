@@ -142,6 +142,14 @@ ruff check .
 mypy
 ```
 
+性能对比（原始运行 vs bundled）：
+```bash
+PYTHONPATH=src python scripts/benchmark.py \
+  --fixture tests/fixtures/01_simple_two_file/fixture.json \
+  --warmup 3 \
+  --runs 20
+```
+
 集成测试覆盖 fixtures：
 1. 最简单双文件导入
 2. package + submodule
