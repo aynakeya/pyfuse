@@ -40,6 +40,18 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         help="Additional local package tree to bundle from module roots; can be used multiple times",
     )
+    build.add_argument(
+        "--vendor-package",
+        action="append",
+        default=[],
+        help="Package from current Python environment to vendor (pure Python package only)",
+    )
+    build.add_argument(
+        "--vendor-module",
+        action="append",
+        default=[],
+        help="Single-file module from current Python environment to vendor (pure Python .py only)",
+    )
     build.add_argument("--report", type=Path, help="Write JSON build report")
     build.add_argument("--debug", action="store_true", help="Show traceback for failures")
     build.add_argument("--verbose", action="store_true", help="Show verbose build logs")
@@ -61,6 +73,8 @@ def main(argv: list[str] | None = None) -> int:
                 module_roots=args.module_root,
                 include_modules=args.include_module,
                 include_packages=include_packages,
+                vendor_packages=args.vendor_package,
+                vendor_modules=args.vendor_module,
                 logger=logger,
             )
         except PyfuseError as exc:

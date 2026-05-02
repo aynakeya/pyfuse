@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from .errors import ResolutionError
 from .generator import generate_bundled_script, write_bundled_script
 from .graph import ModuleGraph, build_graph
 from .resolver import compute_entry_context
@@ -17,6 +19,8 @@ class BundleResult:
     module_roots: list[Path]
     include_modules: list[str]
     include_packages: list[str]
+    vendor_packages: list[str]
+    vendor_modules: list[str]
     entry_module: str
     graph: ModuleGraph
     output_path: Path
@@ -30,6 +34,8 @@ def bundle_project(
     module_roots: list[Path] | None = None,
     include_modules: list[str] | None = None,
     include_packages: list[str] | None = None,
+    vendor_packages: list[str] | None = None,
+    vendor_modules: list[str] | None = None,
     logger: Callable[[str], None] | None = None,
 ) -> BundleResult:
     entry_file = entry_file.resolve()
@@ -37,6 +43,14 @@ def bundle_project(
     extra_module_roots = [root.resolve() for root in (module_roots or [])]
     include_module_names = include_modules or []
     include_package_names = include_packages or []
+    vendor_package_names = vendor_packages or []
+    vendor_module_names = vendor_modules or []
+    vendor_roots = _resolve_vendor_roots(vendor_package_names)
+    vendor_module_roots = _resolve_vendor_module_roots(vendor_module_names)
+    extra_module_roots.extend(vendor_roots)
+    extra_module_roots.extend(vendor_module_roots)
+    graph_include_module_names = [*include_module_names, *vendor_module_names]
+    graph_include_package_names = [*include_package_names, *vendor_package_names]
 
     if logger is not None:
         logger(f"entry file: {entry_file}")
@@ -50,14 +64,18 @@ def bundle_project(
             logger(f"include module: {include}")
         for include in include_package_names:
             logger(f"include package: {include}")
+        for vendor in vendor_package_names:
+            logger(f"vendor package: {vendor}")
+        for vendor_module in vendor_module_names:
+            logger(f"vendor module: {vendor_module}")
         logger(f"entry mod:  {entry_module}")
 
     graph = build_graph(
         root_dir,
         entry_module,
         module_roots=extra_module_roots,
-        include_modules=include_module_names,
-        include_packages=include_package_names,
+        include_modules=graph_include_module_names,
+        include_packages=graph_include_package_names,
         logger=logger,
     )
     if logger is not None:
@@ -74,6 +92,8 @@ def bundle_project(
         module_roots=extra_module_roots,
         include_modules=include_module_names,
         include_packages=include_package_names,
+        vendor_packages=vendor_package_names,
+        vendor_modules=vendor_module_names,
         entry_module=entry_module,
         output_path=output_path,
         graph=graph,
@@ -91,6 +111,8 @@ def bundle_project(
         module_roots=extra_module_roots,
         include_modules=include_module_names,
         include_packages=include_package_names,
+        vendor_packages=vendor_package_names,
+        vendor_modules=vendor_module_names,
         entry_module=entry_module,
         graph=graph,
         output_path=output_path,
@@ -105,6 +127,8 @@ def _build_report(
     module_roots: list[Path],
     include_modules: list[str],
     include_packages: list[str],
+    vendor_packages: list[str],
+    vendor_modules: list[str],
     entry_module: str,
     output_path: Path,
     graph: ModuleGraph,
@@ -127,7 +151,13 @@ def _build_report(
         }
         for importer, lineno, module, reason in graph.skipped_imports
     ]
-    risk_level, risk_reasons = _compute_risk(include_modules, include_packages, skipped)
+    risk_level, risk_reasons = _compute_risk(
+        include_modules,
+        include_packages,
+        vendor_packages,
+        vendor_modules,
+        skipped,
+    )
     return {
         "entry_path": str(entry_path),
         "entry_module": entry_module,
@@ -135,6 +165,8 @@ def _build_report(
         "module_roots": [str(root) for root in module_roots],
         "included_modules_exact": include_modules,
         "included_packages_tree": include_packages,
+        "vendor_packages": vendor_packages,
+        "vendor_modules": vendor_modules,
         "output_path": str(output_path),
         "bundled_modules": sorted(graph.modules.keys()),
         "bundled_module_count": len(graph.modules),
@@ -164,6 +196,8 @@ def _find_module_origin(path: Path, roots: list[Path]) -> str:
 def _compute_risk(
     include_modules: list[str],
     include_packages: list[str],
+    vendor_packages: list[str],
+    vendor_modules: list[str],
     skipped: list[dict[str, object]],
 ) -> tuple[str, list[str]]:
     reasons: list[str] = []
@@ -171,7 +205,76 @@ def _compute_risk(
         reasons.append("package-tree includes may bundle modules not statically imported")
     if include_modules:
         reasons.append("exact module includes were supplied by user")
+    if vendor_packages:
+        reasons.append("vendor packages were supplied from current Python environment")
+    if vendor_modules:
+        reasons.append("vendor modules were supplied from current Python environment")
 
-    if include_packages:
+    if include_packages or vendor_packages or vendor_modules:
         return "medium", reasons
     return "low", reasons
+
+
+def _resolve_vendor_roots(vendor_packages: list[str]) -> list[Path]:
+    roots: list[Path] = []
+    seen: set[Path] = set()
+    for package_name in vendor_packages:
+        root = _resolve_vendor_root(package_name)
+        if root not in seen:
+            roots.append(root)
+            seen.add(root)
+    return roots
+
+
+def _resolve_vendor_root(package_name: str) -> Path:
+    spec = importlib.util.find_spec(package_name)
+    if spec is None:
+        raise ResolutionError(f"vendor package '{package_name}' was not found in current Python environment")
+
+    if spec.submodule_search_locations is None:
+        raise ResolutionError(f"vendor package '{package_name}' is not a package")
+
+    if spec.origin is None:
+        raise ResolutionError(f"namespace vendor package '{package_name}' is not supported")
+
+    package_init = Path(spec.origin)
+    if package_init.name != "__init__.py":
+        raise ResolutionError(f"vendor package '{package_name}' is not a regular package with __init__.py")
+
+    package_dir = package_init.parent
+    root_dir = package_dir
+    for _ in package_name.split("."):
+        root_dir = root_dir.parent
+    return root_dir.resolve()
+
+
+def _resolve_vendor_module_roots(vendor_modules: list[str]) -> list[Path]:
+    roots: list[Path] = []
+    seen: set[Path] = set()
+    for module_name in vendor_modules:
+        root = _resolve_vendor_module_root(module_name)
+        if root not in seen:
+            roots.append(root)
+            seen.add(root)
+    return roots
+
+
+def _resolve_vendor_module_root(module_name: str) -> Path:
+    spec = importlib.util.find_spec(module_name)
+    if spec is None:
+        raise ResolutionError(f"vendor module '{module_name}' was not found in current Python environment")
+
+    if spec.submodule_search_locations is not None:
+        raise ResolutionError(f"vendor module '{module_name}' is a package; use --vendor-package")
+
+    if spec.origin is None:
+        raise ResolutionError(f"vendor module '{module_name}' has no file origin")
+
+    module_path = Path(spec.origin)
+    if module_path.suffix != ".py":
+        raise ResolutionError(f"vendor module '{module_name}' is not a pure Python .py module")
+
+    root_dir = module_path.parent
+    for _ in module_name.split(".")[:-1]:
+        root_dir = root_dir.parent
+    return root_dir.resolve()

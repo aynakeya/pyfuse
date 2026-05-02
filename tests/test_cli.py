@@ -30,11 +30,17 @@ class CliTests(unittest.TestCase):
                 "package_a.plugin",
                 "--include-package",
                 "package_a",
+                "--vendor-package",
+                "third_pkg",
+                "--vendor-module",
+                "third_mod",
             ]
         )
         self.assertEqual([str(root) for root in args.module_root], ["src"])
         self.assertEqual(args.include_module, ["package_a.plugin"])
         self.assertEqual(args.include_package, ["package_a"])
+        self.assertEqual(args.vendor_package, ["third_pkg"])
+        self.assertEqual(args.vendor_module, ["third_mod"])
 
     def test_build_parser_keeps_legacy_include_alias(self) -> None:
         parser = build_parser()

@@ -8,6 +8,7 @@ from pyfuse.errors import UnsupportedFeatureError
 from pyfuse.scanner import (
     detect_unsupported_dynamic_imports,
     extract_imports,
+    extract_top_level_all_names,
     extract_top_level_defined_names,
 )
 
@@ -50,6 +51,18 @@ from .sub import y
         with self.assertRaises(UnsupportedFeatureError):
             detect_unsupported_dynamic_imports(tree, Path("main.py"))
 
+    def test_detect_concatenated_literal_dynamic_import_is_supported(self) -> None:
+        tree = ast.parse("import importlib\nimportlib.import_module('x.' + 'y')")
+        detect_unsupported_dynamic_imports(tree, Path("main.py"))
+        imports = extract_imports(tree)
+        self.assertIn(("x.y", (), 0), [(i.module, i.names, i.level) for i in imports])
+
+    def test_detect_concatenated_constant_dynamic_import_is_supported(self) -> None:
+        tree = ast.parse("import importlib\nPREFIX = 'x.'\nimportlib.import_module(PREFIX + 'y')")
+        detect_unsupported_dynamic_imports(tree, Path("main.py"))
+        imports = extract_imports(tree)
+        self.assertIn(("x.y", (), 0), [(i.module, i.names, i.level) for i in imports])
+
     def test_detect_alias_importlib_dynamic_import_raises(self) -> None:
         tree = ast.parse("import importlib as il\nil.import_module('x.y')")
         with self.assertRaises(UnsupportedFeatureError) as ctx:
@@ -78,6 +91,52 @@ from .sub import y
         self.assertIn("A", names)
         self.assertIn("fn", names)
         self.assertIn("C", names)
+
+    def test_extract_top_level_all_names(self) -> None:
+        tree = ast.parse(
+            "__all__ = ['a', 'b']\n"
+            "__all__ = ('c',)\n"
+            "x = 1\n"
+        )
+        names = extract_top_level_all_names(tree)
+        self.assertIn("a", names)
+        self.assertIn("b", names)
+        self.assertIn("c", names)
+
+    def test_extract_top_level_all_names_from_sequence_constant_and_concat(self) -> None:
+        tree = ast.parse(
+            "BASE = ['a', 'b']\n"
+            "__all__ = BASE + ['c']\n"
+        )
+        names = extract_top_level_all_names(tree)
+        self.assertEqual(names, {"a", "b", "c"})
+
+    def test_extract_top_level_all_names_with_augassign(self) -> None:
+        tree = ast.parse(
+            "__all__ = ['a']\n"
+            "__all__ += ['b']\n"
+        )
+        names = extract_top_level_all_names(tree)
+        self.assertEqual(names, {"a", "b"})
+
+    def test_extract_top_level_all_names_with_append_extend(self) -> None:
+        tree = ast.parse(
+            "__all__ = ['a']\n"
+            "__all__.append('b')\n"
+            "MORE = ['c']\n"
+            "__all__.extend(MORE)\n"
+        )
+        names = extract_top_level_all_names(tree)
+        self.assertEqual(names, {"a", "b", "c"})
+
+    def test_extract_top_level_all_names_with_list_constructor(self) -> None:
+        tree = ast.parse(
+            "BASE = ['a', 'b']\n"
+            "__all__ = list(BASE)\n"
+            "__all__ += tuple(['c'])\n"
+        )
+        names = extract_top_level_all_names(tree)
+        self.assertEqual(names, {"a", "b", "c"})
 
 
 if __name__ == "__main__":

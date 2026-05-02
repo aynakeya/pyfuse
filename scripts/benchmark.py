@@ -169,6 +169,54 @@ def benchmark_fixture(fixture_json: Path, *, warmup: int, runs: int) -> None:
     print(f"overhead ratio (bundle/direct): {ratio:.3f}x")
 
 
+def benchmark_fixture_stats(fixture_json: Path, *, warmup: int, runs: int) -> dict[str, object]:
+    repo_root = Path(__file__).resolve().parent.parent
+    fixture_dir = fixture_json.resolve().parent
+    fixture = _load_fixture(fixture_json.resolve())
+    if not bool(fixture.get("expect_bundle_success", False)):
+        raise RuntimeError("fixture is not expected to bundle successfully")
+
+    project_dir = fixture_dir / "project"
+    original_cmd = _normalize_python_cmd(fixture["original"]["cmd"])
+
+    with tempfile.TemporaryDirectory() as td:
+        bundle_path = Path(td) / "bench_bundle.py"
+        _build_bundle_from_fixture(
+            repo_root=repo_root,
+            fixture_dir=fixture_dir,
+            fixture=fixture,
+            output_path=bundle_path,
+        )
+
+        run_env = os.environ.copy()
+        direct_stats = _bench_command(
+            original_cmd,
+            cwd=project_dir,
+            env=run_env,
+            warmup=warmup,
+            runs=runs,
+        )
+        bundled_stats = _bench_command(
+            [sys.executable, str(bundle_path)],
+            cwd=project_dir,
+            env=run_env,
+            warmup=warmup,
+            runs=runs,
+        )
+
+    ratio = bundled_stats.mean_ms / direct_stats.mean_ms if direct_stats.mean_ms > 0 else float("inf")
+    return {
+        "fixture": str(fixture_json),
+        "runs": runs,
+        "warmup": warmup,
+        "direct_mean_ms": round(direct_stats.mean_ms, 3),
+        "direct_p95_ms": round(direct_stats.p95_ms, 3),
+        "bundle_mean_ms": round(bundled_stats.mean_ms, 3),
+        "bundle_p95_ms": round(bundled_stats.p95_ms, 3),
+        "overhead_ratio": round(ratio, 3),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Benchmark pyfuse bundled script vs direct run")
     parser.add_argument(
@@ -179,10 +227,15 @@ def main() -> int:
     )
     parser.add_argument("--warmup", type=int, default=3, help="Warmup run count for each command")
     parser.add_argument("--runs", type=int, default=20, help="Benchmark run count for each command")
+    parser.add_argument("--json", action="store_true", help="Print benchmark result as JSON")
     args = parser.parse_args()
 
     try:
-        benchmark_fixture(args.fixture, warmup=args.warmup, runs=args.runs)
+        if args.json:
+            stats = benchmark_fixture_stats(args.fixture, warmup=args.warmup, runs=args.runs)
+            print(json.dumps(stats, sort_keys=True))
+        else:
+            benchmark_fixture(args.fixture, warmup=args.warmup, runs=args.runs)
     except Exception as exc:
         print(f"benchmark failed: {exc}")
         return 2

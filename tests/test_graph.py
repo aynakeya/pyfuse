@@ -50,6 +50,23 @@ class GraphTests(unittest.TestCase):
             self.assertIn("pkg", graph.modules)
             self.assertNotIn("pkg.value", graph.modules)
 
+    def test_from_import_prefers_all_export_over_submodule(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            pkg = root / "pkg"
+            pkg.mkdir()
+            (pkg / "__init__.py").write_text(
+                "__all__ = ['value']\n"
+                "value = 123\n",
+                encoding="utf-8",
+            )
+            (pkg / "value.py").write_text("raise RuntimeError('should not load')\n", encoding="utf-8")
+            (root / "main.py").write_text("from pkg import value\nprint(value)\n", encoding="utf-8")
+
+            graph = build_graph(root, "main")
+            self.assertIn("pkg", graph.modules)
+            self.assertNotIn("pkg.value", graph.modules)
+
     def test_include_package_prefers_package_over_same_named_module(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -70,6 +87,20 @@ class GraphTests(unittest.TestCase):
             self.assertIn("pkg.deep", graph.modules)
             self.assertTrue(graph.modules["pkg.deep"].is_package)
             self.assertEqual(graph.modules["pkg.deep"].source.strip(), "KIND = 'package'")
+
+    def test_star_import_uses_package_all_for_local_submodule_deps(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            pkg = root / "pkg"
+            pkg.mkdir(parents=True)
+            (pkg / "__init__.py").write_text("__all__ = ['sub']\n", encoding="utf-8")
+            (pkg / "sub.py").write_text("VALUE = 7\n", encoding="utf-8")
+            (root / "main.py").write_text("from pkg import *\nprint(sub.VALUE)\n", encoding="utf-8")
+
+            graph = build_graph(root, "main")
+            self.assertIn("pkg", graph.modules)
+            self.assertIn("pkg.sub", graph.modules)
+            self.assertIn("pkg.sub", graph.modules["main"].dependencies)
 
 
 if __name__ == "__main__":

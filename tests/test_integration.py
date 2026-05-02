@@ -512,6 +512,448 @@ class IntegrationTests(unittest.TestCase):
             self.assertNotEqual(built.returncode, 0)
             self.assertIn("ambiguous local module", built.stdout + built.stderr)
 
+    def test_vendor_package_bundles_installed_package_tree(self) -> None:
+        repo_root = Path(__file__).resolve().parent.parent
+        env = os.environ.copy()
+        src_path = str(repo_root / "src")
+        env["PYTHONPATH"] = src_path if not env.get("PYTHONPATH") else f"{src_path}:{env['PYTHONPATH']}"
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            site_dir = root / "fake_site"
+            vendor_pkg = site_dir / "third_pkg"
+            vendor_pkg.mkdir(parents=True)
+            (vendor_pkg / "__init__.py").write_text("from .core import value\n", encoding="utf-8")
+            (vendor_pkg / "core.py").write_text("def value():\n    return 'vendor-ok'\n", encoding="utf-8")
+
+            script_dir = root / "project"
+            script_dir.mkdir()
+            (script_dir / "main.py").write_text("from third_pkg import value\nprint(value())\n", encoding="utf-8")
+
+            bundler_env = env.copy()
+            bundler_env["PYTHONPATH"] = (
+                f"{site_dir}:{bundler_env['PYTHONPATH']}"
+                if bundler_env.get("PYTHONPATH")
+                else str(site_dir)
+            )
+            bundled_path = root / "bundled.py"
+            built = subprocess.run(
+                [
+                    "python",
+                    "-m",
+                    "pyfuse.cli",
+                    "build",
+                    str(script_dir / "main.py"),
+                    "-o",
+                    str(bundled_path),
+                    "--vendor-package",
+                    "third_pkg",
+                ],
+                cwd=repo_root,
+                env=bundler_env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(built.returncode, 0, msg=f"bundle failed:\n{built.stdout}\n{built.stderr}")
+
+            run_env = env.copy()
+            # Ensure runtime does not rely on third_pkg being importable from outside.
+            run_env.pop("PYTHONPATH", None)
+            ran = subprocess.run(
+                ["python", str(bundled_path)],
+                cwd=script_dir,
+                env=run_env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(ran.returncode, 0, msg=f"run failed:\n{ran.stdout}\n{ran.stderr}")
+            self.assertEqual(ran.stdout, "vendor-ok\n")
+
+    def test_vendor_package_report_contains_vendor_metadata(self) -> None:
+        repo_root = Path(__file__).resolve().parent.parent
+        env = os.environ.copy()
+        src_path = str(repo_root / "src")
+        env["PYTHONPATH"] = src_path if not env.get("PYTHONPATH") else f"{src_path}:{env['PYTHONPATH']}"
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            site_dir = root / "fake_site"
+            vendor_pkg = site_dir / "third_pkg"
+            vendor_pkg.mkdir(parents=True)
+            (vendor_pkg / "__init__.py").write_text("from .core import value\n", encoding="utf-8")
+            (vendor_pkg / "core.py").write_text("def value():\n    return 'vendor-ok'\n", encoding="utf-8")
+            script_dir = root / "project"
+            script_dir.mkdir()
+            (script_dir / "main.py").write_text("from third_pkg import value\nprint(value())\n", encoding="utf-8")
+            report_path = root / "report.json"
+
+            bundler_env = env.copy()
+            bundler_env["PYTHONPATH"] = (
+                f"{site_dir}:{bundler_env['PYTHONPATH']}"
+                if bundler_env.get("PYTHONPATH")
+                else str(site_dir)
+            )
+            built = subprocess.run(
+                [
+                    "python",
+                    "-m",
+                    "pyfuse.cli",
+                    "build",
+                    str(script_dir / "main.py"),
+                    "-o",
+                    str(root / "bundled.py"),
+                    "--vendor-package",
+                    "third_pkg",
+                    "--report",
+                    str(report_path),
+                ],
+                cwd=repo_root,
+                env=bundler_env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(built.returncode, 0, msg=f"bundle failed:\n{built.stdout}\n{built.stderr}")
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            self.assertEqual(report["vendor_packages"], ["third_pkg"])
+            self.assertEqual(report["included_packages_tree"], [])
+            self.assertEqual(report["risk_level"], "medium")
+
+    def test_vendor_package_rejects_plain_module(self) -> None:
+        repo_root = Path(__file__).resolve().parent.parent
+        env = os.environ.copy()
+        src_path = str(repo_root / "src")
+        env["PYTHONPATH"] = src_path if not env.get("PYTHONPATH") else f"{src_path}:{env['PYTHONPATH']}"
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            site_dir = root / "fake_site"
+            site_dir.mkdir(parents=True)
+            (site_dir / "modonly.py").write_text("VALUE = 1\n", encoding="utf-8")
+            script_dir = root / "project"
+            script_dir.mkdir()
+            (script_dir / "main.py").write_text("print('x')\n", encoding="utf-8")
+
+            bundler_env = env.copy()
+            bundler_env["PYTHONPATH"] = (
+                f"{site_dir}:{bundler_env['PYTHONPATH']}"
+                if bundler_env.get("PYTHONPATH")
+                else str(site_dir)
+            )
+            built = subprocess.run(
+                [
+                    "python",
+                    "-m",
+                    "pyfuse.cli",
+                    "build",
+                    str(script_dir / "main.py"),
+                    "-o",
+                    str(root / "bundled.py"),
+                    "--vendor-package",
+                    "modonly",
+                ],
+                cwd=repo_root,
+                env=bundler_env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(built.returncode, 0)
+            self.assertIn("is not a package", built.stdout + built.stderr)
+
+    def test_vendor_package_rejects_missing_package(self) -> None:
+        repo_root = Path(__file__).resolve().parent.parent
+        env = os.environ.copy()
+        src_path = str(repo_root / "src")
+        env["PYTHONPATH"] = src_path if not env.get("PYTHONPATH") else f"{src_path}:{env['PYTHONPATH']}"
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            script_dir = root / "project"
+            script_dir.mkdir()
+            (script_dir / "main.py").write_text("print('x')\n", encoding="utf-8")
+
+            built = subprocess.run(
+                [
+                    "python",
+                    "-m",
+                    "pyfuse.cli",
+                    "build",
+                    str(script_dir / "main.py"),
+                    "-o",
+                    str(root / "bundled.py"),
+                    "--vendor-package",
+                    "pkg_that_does_not_exist_for_pyfuse_test",
+                ],
+                cwd=repo_root,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(built.returncode, 0)
+            self.assertIn("was not found", built.stdout + built.stderr)
+
+    def test_vendor_package_rejects_namespace_package(self) -> None:
+        repo_root = Path(__file__).resolve().parent.parent
+        env = os.environ.copy()
+        src_path = str(repo_root / "src")
+        env["PYTHONPATH"] = src_path if not env.get("PYTHONPATH") else f"{src_path}:{env['PYTHONPATH']}"
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            site_dir = root / "fake_site"
+            (site_dir / "ns_pkg").mkdir(parents=True)
+            # No __init__.py => namespace package.
+            (site_dir / "ns_pkg" / "mod.py").write_text("VALUE = 1\n", encoding="utf-8")
+
+            script_dir = root / "project"
+            script_dir.mkdir()
+            (script_dir / "main.py").write_text("print('x')\n", encoding="utf-8")
+
+            bundler_env = env.copy()
+            bundler_env["PYTHONPATH"] = (
+                f"{site_dir}:{bundler_env['PYTHONPATH']}"
+                if bundler_env.get("PYTHONPATH")
+                else str(site_dir)
+            )
+            built = subprocess.run(
+                [
+                    "python",
+                    "-m",
+                    "pyfuse.cli",
+                    "build",
+                    str(script_dir / "main.py"),
+                    "-o",
+                    str(root / "bundled.py"),
+                    "--vendor-package",
+                    "ns_pkg",
+                ],
+                cwd=repo_root,
+                env=bundler_env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(built.returncode, 0)
+            self.assertIn("namespace vendor package", built.stdout + built.stderr)
+
+    def test_vendor_module_bundles_installed_single_file_module(self) -> None:
+        repo_root = Path(__file__).resolve().parent.parent
+        env = os.environ.copy()
+        src_path = str(repo_root / "src")
+        env["PYTHONPATH"] = src_path if not env.get("PYTHONPATH") else f"{src_path}:{env['PYTHONPATH']}"
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            site_dir = root / "fake_site"
+            site_dir.mkdir(parents=True)
+            (site_dir / "third_mod.py").write_text("def value():\n    return 'vendor-mod-ok'\n", encoding="utf-8")
+
+            script_dir = root / "project"
+            script_dir.mkdir()
+            (script_dir / "main.py").write_text("import third_mod\nprint(third_mod.value())\n", encoding="utf-8")
+
+            bundler_env = env.copy()
+            bundler_env["PYTHONPATH"] = (
+                f"{site_dir}:{bundler_env['PYTHONPATH']}"
+                if bundler_env.get("PYTHONPATH")
+                else str(site_dir)
+            )
+            bundled_path = root / "bundled.py"
+            built = subprocess.run(
+                [
+                    "python",
+                    "-m",
+                    "pyfuse.cli",
+                    "build",
+                    str(script_dir / "main.py"),
+                    "-o",
+                    str(bundled_path),
+                    "--vendor-module",
+                    "third_mod",
+                ],
+                cwd=repo_root,
+                env=bundler_env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(built.returncode, 0, msg=f"bundle failed:\n{built.stdout}\n{built.stderr}")
+
+            run_env = env.copy()
+            run_env.pop("PYTHONPATH", None)
+            ran = subprocess.run(
+                ["python", str(bundled_path)],
+                cwd=script_dir,
+                env=run_env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(ran.returncode, 0, msg=f"run failed:\n{ran.stdout}\n{ran.stderr}")
+            self.assertEqual(ran.stdout, "vendor-mod-ok\n")
+
+    def test_vendor_module_report_contains_vendor_modules(self) -> None:
+        repo_root = Path(__file__).resolve().parent.parent
+        env = os.environ.copy()
+        src_path = str(repo_root / "src")
+        env["PYTHONPATH"] = src_path if not env.get("PYTHONPATH") else f"{src_path}:{env['PYTHONPATH']}"
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            site_dir = root / "fake_site"
+            site_dir.mkdir(parents=True)
+            (site_dir / "third_mod.py").write_text("def value():\n    return 'vendor-mod-ok'\n", encoding="utf-8")
+
+            script_dir = root / "project"
+            script_dir.mkdir()
+            (script_dir / "main.py").write_text("import third_mod\nprint(third_mod.value())\n", encoding="utf-8")
+            report_path = root / "report.json"
+
+            bundler_env = env.copy()
+            bundler_env["PYTHONPATH"] = (
+                f"{site_dir}:{bundler_env['PYTHONPATH']}"
+                if bundler_env.get("PYTHONPATH")
+                else str(site_dir)
+            )
+            built = subprocess.run(
+                [
+                    "python",
+                    "-m",
+                    "pyfuse.cli",
+                    "build",
+                    str(script_dir / "main.py"),
+                    "-o",
+                    str(root / "bundled.py"),
+                    "--vendor-module",
+                    "third_mod",
+                    "--report",
+                    str(report_path),
+                ],
+                cwd=repo_root,
+                env=bundler_env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(built.returncode, 0, msg=f"bundle failed:\n{built.stdout}\n{built.stderr}")
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            self.assertEqual(report["vendor_modules"], ["third_mod"])
+            self.assertEqual(report["risk_level"], "medium")
+
+    def test_vendor_module_rejects_package_target(self) -> None:
+        repo_root = Path(__file__).resolve().parent.parent
+        env = os.environ.copy()
+        src_path = str(repo_root / "src")
+        env["PYTHONPATH"] = src_path if not env.get("PYTHONPATH") else f"{src_path}:{env['PYTHONPATH']}"
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            site_dir = root / "fake_site"
+            pkg = site_dir / "pkg_as_mod"
+            pkg.mkdir(parents=True)
+            (pkg / "__init__.py").write_text("", encoding="utf-8")
+            script_dir = root / "project"
+            script_dir.mkdir()
+            (script_dir / "main.py").write_text("print('x')\n", encoding="utf-8")
+
+            bundler_env = env.copy()
+            bundler_env["PYTHONPATH"] = (
+                f"{site_dir}:{bundler_env['PYTHONPATH']}"
+                if bundler_env.get("PYTHONPATH")
+                else str(site_dir)
+            )
+            built = subprocess.run(
+                [
+                    "python",
+                    "-m",
+                    "pyfuse.cli",
+                    "build",
+                    str(script_dir / "main.py"),
+                    "-o",
+                    str(root / "bundled.py"),
+                    "--vendor-module",
+                    "pkg_as_mod",
+                ],
+                cwd=repo_root,
+                env=bundler_env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(built.returncode, 0)
+            self.assertIn("is a package; use --vendor-package", built.stdout + built.stderr)
+
+    def test_vendor_module_rejects_missing_module(self) -> None:
+        repo_root = Path(__file__).resolve().parent.parent
+        env = os.environ.copy()
+        src_path = str(repo_root / "src")
+        env["PYTHONPATH"] = src_path if not env.get("PYTHONPATH") else f"{src_path}:{env['PYTHONPATH']}"
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            script_dir = root / "project"
+            script_dir.mkdir()
+            (script_dir / "main.py").write_text("print('x')\n", encoding="utf-8")
+
+            built = subprocess.run(
+                [
+                    "python",
+                    "-m",
+                    "pyfuse.cli",
+                    "build",
+                    str(script_dir / "main.py"),
+                    "-o",
+                    str(root / "bundled.py"),
+                    "--vendor-module",
+                    "mod_that_does_not_exist_for_pyfuse_test",
+                ],
+                cwd=repo_root,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(built.returncode, 0)
+            self.assertIn("vendor module", built.stdout + built.stderr)
+            self.assertIn("was not found", built.stdout + built.stderr)
+
+    def test_vendor_module_rejects_non_python_extension_module(self) -> None:
+        repo_root = Path(__file__).resolve().parent.parent
+        env = os.environ.copy()
+        src_path = str(repo_root / "src")
+        env["PYTHONPATH"] = src_path if not env.get("PYTHONPATH") else f"{src_path}:{env['PYTHONPATH']}"
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            script_dir = root / "project"
+            script_dir.mkdir()
+            (script_dir / "main.py").write_text("print('x')\n", encoding="utf-8")
+
+            built = subprocess.run(
+                [
+                    "python",
+                    "-m",
+                    "pyfuse.cli",
+                    "build",
+                    str(script_dir / "main.py"),
+                    "-o",
+                    str(root / "bundled.py"),
+                    "--vendor-module",
+                    "math",
+                ],
+                cwd=repo_root,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(built.returncode, 0)
+            self.assertIn("not a pure Python .py module", built.stdout + built.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

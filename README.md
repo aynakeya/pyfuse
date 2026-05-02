@@ -22,11 +22,14 @@
 - 支持可静态判定的动态导入：
   - `__import__("module.name")`
   - `importlib.import_module("module.name")`
+  - `importlib.import_module("pkg." + "mod")` / `importlib.import_module(PREFIX + "mod")`（`PREFIX` 为可静态判定字符串常量）
   - `__import__(NAME)` / `importlib.import_module(NAME)`，其中 `NAME` 是同文件顶层单次赋值的字符串常量
 - 支持额外本地源码根：
   - `--module-root PATH`
   - `--include-module MODULE`
   - `--include-package PACKAGE`
+  - `--vendor-package PACKAGE`（从当前 Python 环境引入纯 Python 包）
+  - `--vendor-module MODULE`（从当前 Python 环境引入单文件纯 Python 模块）
 - 支持 `--report` 输出 JSON 构建报告（打包模块、跳过模块及原因、依赖摘要、风险等级）。
 - 遇到不支持能力时显式报错（例如动态导入参数不是常量字符串）。
 
@@ -56,7 +59,7 @@ pip install -e ".[dev]"
 
 CLI：
 ```text
-pyfuse build ENTRY.py -o OUTPUT.py [--debug] [--verbose] [--report REPORT.json] [--module-root PATH] [--include-module MODULE] [--include-package PACKAGE]
+pyfuse build ENTRY.py -o OUTPUT.py [--debug] [--verbose] [--report REPORT.json] [--module-root PATH] [--include-module MODULE] [--include-package PACKAGE] [--vendor-package PACKAGE] [--vendor-module MODULE]
 ```
 
 `--module-root` 用来声明额外的本地用户代码根目录。例如入口在 `scripts/s1/main.py`，包在 `src/package_a`：
@@ -79,6 +82,18 @@ pyfuse build scripts/s1/main.py -o dist/s1.py --module-root src --include-packag
 
 `--include` 仍可使用，但只是 `--include-package` 的别名。
 
+`--vendor-package` 用于从当前 Python 环境定位并打包第三方包（必须是纯 Python 常规包，需有 `__init__.py`）：
+
+```bash
+pyfuse build app/main.py -o dist/app.py --vendor-package somepkg
+```
+
+`--vendor-module` 用于从当前 Python 环境定位并打包单文件模块（必须是 `.py`）：
+
+```bash
+pyfuse build app/main.py -o dist/app.py --vendor-module somemod
+```
+
 一个完整场景（入口在 `scripts/`，本地包在 `src/`，并且插件通过动态导入触发）：
 
 ```bash
@@ -98,6 +113,8 @@ python dist/s1.py
 - `included_modules_exact`: 用户用 `--include-module` 精确包含的模块
 - `included_packages_tree`: 用户用 `--include-package` 包树包含的包
 - `module_origins`: 每个被打包模块来自哪个本地根
+- `vendor_packages`: 用户通过 `--vendor-package` 显式引入的包
+- `vendor_modules`: 用户通过 `--vendor-module` 显式引入的模块
 - `risk_level`: 构建风险等级
 - `uncertain_imports`: 未打包或不确定 import 的诊断记录
 
@@ -149,6 +166,16 @@ PYTHONPATH=src python scripts/benchmark.py \
   --warmup 3 \
   --runs 20
 ```
+
+批量对比所有可成功打包 fixture 并导出 CSV：
+```bash
+PYTHONPATH=src python scripts/benchmark_all.py --warmup 2 --runs 10 --csv /tmp/pyfuse-bench.csv
+```
+
+`benchmark_all.py` 输出包含：
+- `bundled_module_count`
+- `dependency_edges`
+- `direct_mean_ms` / `bundle_mean_ms` / `overhead_ratio`
 
 集成测试覆盖 fixtures：
 1. 最简单双文件导入

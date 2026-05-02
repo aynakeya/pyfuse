@@ -120,6 +120,7 @@ def resolve_local_dependencies(
     req_names: tuple[str, ...],
     req_level: int,
     is_name_defined_in_module: Callable[[str, str], bool] | None = None,
+    is_name_exported_by_all: Callable[[str, str], bool] | None = None,
 ) -> set[str]:
     return resolve_import_request(
         root_dir=root_dir,
@@ -130,6 +131,7 @@ def resolve_local_dependencies(
         req_names=req_names,
         req_level=req_level,
         is_name_defined_in_module=is_name_defined_in_module,
+        is_name_exported_by_all=is_name_exported_by_all,
     ).local_deps
 
 
@@ -143,16 +145,18 @@ def resolve_import_request(
     req_names: tuple[str, ...],
     req_level: int,
     is_name_defined_in_module: Callable[[str, str], bool] | None = None,
+    is_name_exported_by_all: Callable[[str, str], bool] | None = None,
 ) -> ImportResolution:
     local_deps: set[str] = set()
     skipped: list[SkippedImport] = []
     roots = search_roots or [root_dir]
 
-    if req_level > 0:
-        base = resolve_relative_base(current_module, current_is_package, req_level)
-        abs_module = _join_module(base, req_module)
-    else:
-        abs_module = req_module or ""
+    abs_module = absolute_module_name_for_request(
+        current_module=current_module,
+        current_is_package=current_is_package,
+        req_module=req_module,
+        req_level=req_level,
+    )
 
     abs_module_is_local = False
     if abs_module:
@@ -169,6 +173,19 @@ def resolve_import_request(
 
     for name in req_names:
         if name == "*":
+            continue
+        if (
+            abs_module
+            and abs_module_is_local
+            and is_name_exported_by_all is not None
+            and is_name_exported_by_all(abs_module, name)
+        ):
+            skipped.append(
+                SkippedImport(
+                    module=f"{abs_module}.{name}",
+                    reason="name-exported-by-all",
+                )
+            )
             continue
         if abs_module and abs_module_is_local and is_name_defined_in_module is not None:
             if is_name_defined_in_module(abs_module, name):
@@ -190,3 +207,16 @@ def resolve_import_request(
             skipped.append(SkippedImport(module=candidate, reason="not-local-or-missing"))
 
     return ImportResolution(local_deps=local_deps, skipped=skipped)
+
+
+def absolute_module_name_for_request(
+    *,
+    current_module: str,
+    current_is_package: bool,
+    req_module: str | None,
+    req_level: int,
+) -> str:
+    if req_level > 0:
+        base = resolve_relative_base(current_module, current_is_package, req_level)
+        return _join_module(base, req_module)
+    return req_module or ""

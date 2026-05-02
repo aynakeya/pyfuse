@@ -8,6 +8,7 @@ from .errors import ResolutionError
 from .models import ModuleInfo
 from .resolver import (
     ResolvedModule,
+    absolute_module_name_for_request,
     parent_packages,
     resolve_import_request,
     resolve_module,
@@ -16,6 +17,7 @@ from .resolver import (
 from .scanner import (
     detect_unsupported_dynamic_imports,
     extract_imports,
+    extract_top_level_all_names,
     extract_top_level_defined_names,
     parse_source,
 )
@@ -128,6 +130,22 @@ def _visit_module(
                 defined_names_cache[module_name] = extract_top_level_defined_names(dep_tree)
         return name in defined_names_cache[module_name]
 
+    all_names_cache: dict[str, set[str]] = {}
+
+    def get_module_all_names(module_name: str) -> set[str]:
+        if module_name not in all_names_cache:
+            dep_resolved = resolve_module_in_roots(search_roots, module_name)
+            if dep_resolved is None:
+                all_names_cache[module_name] = set()
+            else:
+                dep_tree = parse_source(dep_resolved.path)
+                all_names_cache[module_name] = extract_top_level_all_names(dep_tree)
+        return all_names_cache[module_name]
+
+    def is_name_exported_by_all(module_name: str, name: str) -> bool:
+        all_names = get_module_all_names(module_name)
+        return bool(all_names) and name in all_names
+
     for req in imports:
         try:
             resolved_import = resolve_import_request(
@@ -139,6 +157,7 @@ def _visit_module(
                 req_names=req.names,
                 req_level=req.level,
                 is_name_defined_in_module=is_name_defined_in_module,
+                is_name_exported_by_all=is_name_exported_by_all,
             )
         except ResolutionError as exc:
             raise ResolutionError(exc.message, file=resolved.path, lineno=req.lineno) from exc
@@ -154,6 +173,25 @@ def _visit_module(
                 logger(
                     f"  skipped from line {req.lineno}: {skipped.module} ({skipped.reason})"
                 )
+
+        if "*" in req.names:
+            abs_module = absolute_module_name_for_request(
+                current_module=resolved.name,
+                current_is_package=resolved.is_package,
+                req_module=req.module,
+                req_level=req.level,
+            )
+            if abs_module:
+                pkg_resolved = resolve_module_in_roots(search_roots, abs_module)
+                if pkg_resolved is not None and pkg_resolved.is_package:
+                    for exported in sorted(get_module_all_names(abs_module)):
+                        candidate = f"{abs_module}.{exported}"
+                        candidate_resolved = resolve_module_in_roots(search_roots, candidate)
+                        if candidate_resolved is not None:
+                            info.dependencies.add(candidate)
+                            deps.add(candidate)
+                    if logger is not None and deps:
+                        logger(f"  deps from __all__ at line {req.lineno}: {sorted(deps)}")
 
         for dep in sorted(deps):
             dep_resolved = resolve_module_in_roots(search_roots, dep)
