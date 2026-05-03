@@ -1,0 +1,8 @@
+{
+  "entry": "main.py",
+  "original": {"cmd": ["python", "main.py"]},
+  "original_pythonpath": ["fake_site"],
+  "vendor_packages": ["third_ns"],
+  "expect_bundle_success": false,
+  "expected_error_contains": "namespace vendor package"
+}

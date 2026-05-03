@@ -1,0 +1,7 @@
+{
+  "entry": "main.py",
+  "original": {"cmd": ["python", "main.py"]},
+  "original_pythonpath": ["fake_site"],
+  "vendor_packages": ["third_pkg"],
+  "expect_bundle_success": true
+}

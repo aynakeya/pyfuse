@@ -33,6 +33,15 @@ class IntegrationTests(unittest.TestCase):
                 else f"{path}:{original_env['PYTHONPATH']}"
             )
 
+        bundler_env = env.copy()
+        for pythonpath in cfg.get("bundler_pythonpath", cfg.get("original_pythonpath", [])):
+            path = str(project_dir / pythonpath)
+            bundler_env["PYTHONPATH"] = (
+                path
+                if not bundler_env.get("PYTHONPATH")
+                else f"{path}:{bundler_env['PYTHONPATH']}"
+            )
+
         original_cmd = cfg["original"]["cmd"]
         original = subprocess.run(
             original_cmd,
@@ -61,7 +70,9 @@ class IntegrationTests(unittest.TestCase):
             bundle_cmd.extend(["--include-module", include])
         for include in cfg.get("include_packages", []):
             bundle_cmd.extend(["--include-package", include])
-        built = subprocess.run(bundle_cmd, cwd=repo_root, env=env, text=True, capture_output=True, check=False)
+        for vendor in cfg.get("vendor_packages", []):
+            bundle_cmd.extend(["--vendor-package", vendor])
+        built = subprocess.run(bundle_cmd, cwd=repo_root, env=bundler_env, text=True, capture_output=True, check=False)
 
         if cfg["expect_bundle_success"]:
             self.assertEqual(
