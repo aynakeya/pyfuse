@@ -75,9 +75,7 @@ def ensure_no_namespace_parents(root_dir: Path, module_name: str) -> None:
     for pkg in parent_packages(module_name):
         pkg_dir = root_dir / Path(*pkg.split("."))
         if pkg_dir.is_dir() and not (pkg_dir / "__init__.py").exists():
-            raise ResolutionError(
-                f"namespace package '{pkg}' is not supported (missing __init__.py)"
-            )
+            raise ResolutionError(f"namespace package '{pkg}' is not supported (missing __init__.py)")
 
 
 def resolve_relative_base(current_module: str, current_is_package: bool, level: int) -> str:

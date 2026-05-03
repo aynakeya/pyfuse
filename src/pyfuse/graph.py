@@ -170,9 +170,7 @@ def _visit_module(
         for skipped in resolved_import.skipped:
             skipped_imports.append((resolved.name, req.lineno, skipped.module, skipped.reason))
             if logger is not None:
-                logger(
-                    f"  skipped from line {req.lineno}: {skipped.module} ({skipped.reason})"
-                )
+                logger(f"  skipped from line {req.lineno}: {skipped.module} ({skipped.reason})")
 
         if "*" in req.names:
             abs_module = absolute_module_name_for_request(

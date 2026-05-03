@@ -56,8 +56,7 @@ class GraphTests(unittest.TestCase):
             pkg = root / "pkg"
             pkg.mkdir()
             (pkg / "__init__.py").write_text(
-                "__all__ = ['value']\n"
-                "value = 123\n",
+                "__all__ = ['value']\nvalue = 123\n",
                 encoding="utf-8",
             )
             (pkg / "value.py").write_text("raise RuntimeError('should not load')\n", encoding="utf-8")

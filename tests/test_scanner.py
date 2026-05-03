@@ -76,6 +76,7 @@ from .sub import y
         self.assertIn("aliased __import__", str(ctx.exception))
 
     def test_extract_top_level_defined_names(self) -> None:
+        # fmt: off
         tree = ast.parse(
             "import pkg.sub\n"
             "from x import y as yy\n"
@@ -85,6 +86,7 @@ from .sub import y
             "class C:\n"
             "    pass\n"
         )
+        # fmt: on
         names = extract_top_level_defined_names(tree)
         self.assertIn("pkg", names)
         self.assertIn("yy", names)
@@ -93,48 +95,29 @@ from .sub import y
         self.assertIn("C", names)
 
     def test_extract_top_level_all_names(self) -> None:
-        tree = ast.parse(
-            "__all__ = ['a', 'b']\n"
-            "__all__ = ('c',)\n"
-            "x = 1\n"
-        )
+        tree = ast.parse("__all__ = ['a', 'b']\n__all__ = ('c',)\nx = 1\n")
         names = extract_top_level_all_names(tree)
         self.assertIn("a", names)
         self.assertIn("b", names)
         self.assertIn("c", names)
 
     def test_extract_top_level_all_names_from_sequence_constant_and_concat(self) -> None:
-        tree = ast.parse(
-            "BASE = ['a', 'b']\n"
-            "__all__ = BASE + ['c']\n"
-        )
+        tree = ast.parse("BASE = ['a', 'b']\n__all__ = BASE + ['c']\n")
         names = extract_top_level_all_names(tree)
         self.assertEqual(names, {"a", "b", "c"})
 
     def test_extract_top_level_all_names_with_augassign(self) -> None:
-        tree = ast.parse(
-            "__all__ = ['a']\n"
-            "__all__ += ['b']\n"
-        )
+        tree = ast.parse("__all__ = ['a']\n__all__ += ['b']\n")
         names = extract_top_level_all_names(tree)
         self.assertEqual(names, {"a", "b"})
 
     def test_extract_top_level_all_names_with_append_extend(self) -> None:
-        tree = ast.parse(
-            "__all__ = ['a']\n"
-            "__all__.append('b')\n"
-            "MORE = ['c']\n"
-            "__all__.extend(MORE)\n"
-        )
+        tree = ast.parse("__all__ = ['a']\n__all__.append('b')\nMORE = ['c']\n__all__.extend(MORE)\n")
         names = extract_top_level_all_names(tree)
         self.assertEqual(names, {"a", "b", "c"})
 
     def test_extract_top_level_all_names_with_list_constructor(self) -> None:
-        tree = ast.parse(
-            "BASE = ['a', 'b']\n"
-            "__all__ = list(BASE)\n"
-            "__all__ += tuple(['c'])\n"
-        )
+        tree = ast.parse("BASE = ['a', 'b']\n__all__ = list(BASE)\n__all__ += tuple(['c'])\n")
         names = extract_top_level_all_names(tree)
         self.assertEqual(names, {"a", "b", "c"})
 

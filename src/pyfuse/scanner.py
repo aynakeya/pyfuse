@@ -27,14 +27,14 @@ def extract_imports(tree: ast.AST) -> list[ImportRequest]:
                     )
                 )
         elif isinstance(node, ast.ImportFrom):
-                imports.append(
-                    ImportRequest(
-                        module=node.module,
-                        names=tuple(alias.name for alias in node.names),
-                        level=node.level,
-                        lineno=getattr(node, "lineno", 0),
-                    )
+            imports.append(
+                ImportRequest(
+                    module=node.module,
+                    names=tuple(alias.name for alias in node.names),
+                    level=node.level,
+                    lineno=getattr(node, "lineno", 0),
                 )
+            )
         elif isinstance(node, ast.Call):
             dyn_req = _extract_static_dynamic_import(node, constants=constants)
             if dyn_req is not None:
@@ -332,9 +332,7 @@ def _extract_static_dynamic_import(
 
     if isinstance(func, ast.Attribute):
         is_import_module_call = (
-            isinstance(func.value, ast.Name)
-            and func.value.id == "importlib"
-            and func.attr == "import_module"
+            isinstance(func.value, ast.Name) and func.value.id == "importlib" and func.attr == "import_module"
         )
         if not is_import_module_call:
             return None

@@ -32,9 +32,7 @@ def _run_one(fixture: Path, warmup: int, runs: int) -> dict[str, object]:
     ]
     proc = subprocess.run(cmd, text=True, capture_output=True, check=False)
     if proc.returncode != 0:
-        raise RuntimeError(
-            f"benchmark failed for {fixture}\nstdout={proc.stdout}\nstderr={proc.stderr}"
-        )
+        raise RuntimeError(f"benchmark failed for {fixture}\nstdout={proc.stdout}\nstderr={proc.stderr}")
     return json.loads(proc.stdout.strip())
 
 
@@ -71,9 +69,7 @@ def _build_report_for_fixture(fixture: Path) -> dict[str, object]:
             cmd.extend(["--include-package", str(include)])
         proc = subprocess.run(cmd, text=True, capture_output=True, check=False)
         if proc.returncode != 0:
-            raise RuntimeError(
-                f"build report failed for {fixture}\nstdout={proc.stdout}\nstderr={proc.stderr}"
-            )
+            raise RuntimeError(f"build report failed for {fixture}\nstdout={proc.stdout}\nstderr={proc.stderr}")
         return json.loads(report_path.read_text(encoding="utf-8"))
 
 

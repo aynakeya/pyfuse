@@ -117,12 +117,7 @@ def _build_bundle_from_fixture(
 
     proc = subprocess.run(cmd, cwd=repo_root, env=env, text=True, capture_output=True, check=False)
     if proc.returncode != 0:
-        raise RuntimeError(
-            "bundle build failed\n"
-            f"cmd={' '.join(cmd)}\n"
-            f"stdout={proc.stdout}\n"
-            f"stderr={proc.stderr}"
-        )
+        raise RuntimeError(f"bundle build failed\ncmd={' '.join(cmd)}\nstdout={proc.stdout}\nstderr={proc.stderr}")
 
 
 def benchmark_fixture(fixture_json: Path, *, warmup: int, runs: int) -> None:

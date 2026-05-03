@@ -28,18 +28,14 @@ class IntegrationTests(unittest.TestCase):
         for pythonpath in cfg.get("original_pythonpath", []):
             path = str(project_dir / pythonpath)
             original_env["PYTHONPATH"] = (
-                path
-                if not original_env.get("PYTHONPATH")
-                else f"{path}:{original_env['PYTHONPATH']}"
+                path if not original_env.get("PYTHONPATH") else f"{path}:{original_env['PYTHONPATH']}"
             )
 
         bundler_env = env.copy()
         for pythonpath in cfg.get("bundler_pythonpath", cfg.get("original_pythonpath", [])):
             path = str(project_dir / pythonpath)
             bundler_env["PYTHONPATH"] = (
-                path
-                if not bundler_env.get("PYTHONPATH")
-                else f"{path}:{bundler_env['PYTHONPATH']}"
+                path if not bundler_env.get("PYTHONPATH") else f"{path}:{bundler_env['PYTHONPATH']}"
             )
 
         original_cmd = cfg["original"]["cmd"]
@@ -121,6 +117,7 @@ class IntegrationTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
+            # fmt: off
             (root / "a.py").write_text(
                 "def aa() -> str:\n"
                 "    return 'AA_OK'\n",
@@ -131,6 +128,7 @@ class IntegrationTests(unittest.TestCase):
                 "print(aa())\n",
                 encoding="utf-8",
             )
+            # fmt: on
 
             bundle_cmd = [
                 "python",
@@ -435,12 +433,14 @@ class IntegrationTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (package / "__init__.py").write_text("", encoding="utf-8")
+            # fmt: off
             (package / "plugin.py").write_text(
                 "from .helper import msg\n"
                 "def run():\n"
                 "    return msg()\n",
                 encoding="utf-8",
             )
+            # fmt: on
             (package / "helper.py").write_text(
                 "def msg():\n    return 'include-ok'\n",
                 encoding="utf-8",
@@ -543,9 +543,7 @@ class IntegrationTests(unittest.TestCase):
 
             bundler_env = env.copy()
             bundler_env["PYTHONPATH"] = (
-                f"{site_dir}:{bundler_env['PYTHONPATH']}"
-                if bundler_env.get("PYTHONPATH")
-                else str(site_dir)
+                f"{site_dir}:{bundler_env['PYTHONPATH']}" if bundler_env.get("PYTHONPATH") else str(site_dir)
             )
             bundled_path = root / "bundled.py"
             built = subprocess.run(
@@ -602,9 +600,7 @@ class IntegrationTests(unittest.TestCase):
 
             bundler_env = env.copy()
             bundler_env["PYTHONPATH"] = (
-                f"{site_dir}:{bundler_env['PYTHONPATH']}"
-                if bundler_env.get("PYTHONPATH")
-                else str(site_dir)
+                f"{site_dir}:{bundler_env['PYTHONPATH']}" if bundler_env.get("PYTHONPATH") else str(site_dir)
             )
             built = subprocess.run(
                 [
@@ -649,9 +645,7 @@ class IntegrationTests(unittest.TestCase):
 
             bundler_env = env.copy()
             bundler_env["PYTHONPATH"] = (
-                f"{site_dir}:{bundler_env['PYTHONPATH']}"
-                if bundler_env.get("PYTHONPATH")
-                else str(site_dir)
+                f"{site_dir}:{bundler_env['PYTHONPATH']}" if bundler_env.get("PYTHONPATH") else str(site_dir)
             )
             built = subprocess.run(
                 [
@@ -726,9 +720,7 @@ class IntegrationTests(unittest.TestCase):
 
             bundler_env = env.copy()
             bundler_env["PYTHONPATH"] = (
-                f"{site_dir}:{bundler_env['PYTHONPATH']}"
-                if bundler_env.get("PYTHONPATH")
-                else str(site_dir)
+                f"{site_dir}:{bundler_env['PYTHONPATH']}" if bundler_env.get("PYTHONPATH") else str(site_dir)
             )
             built = subprocess.run(
                 [
@@ -769,9 +761,7 @@ class IntegrationTests(unittest.TestCase):
 
             bundler_env = env.copy()
             bundler_env["PYTHONPATH"] = (
-                f"{site_dir}:{bundler_env['PYTHONPATH']}"
-                if bundler_env.get("PYTHONPATH")
-                else str(site_dir)
+                f"{site_dir}:{bundler_env['PYTHONPATH']}" if bundler_env.get("PYTHONPATH") else str(site_dir)
             )
             bundled_path = root / "bundled.py"
             built = subprocess.run(
@@ -826,9 +816,7 @@ class IntegrationTests(unittest.TestCase):
 
             bundler_env = env.copy()
             bundler_env["PYTHONPATH"] = (
-                f"{site_dir}:{bundler_env['PYTHONPATH']}"
-                if bundler_env.get("PYTHONPATH")
-                else str(site_dir)
+                f"{site_dir}:{bundler_env['PYTHONPATH']}" if bundler_env.get("PYTHONPATH") else str(site_dir)
             )
             built = subprocess.run(
                 [
@@ -873,9 +861,7 @@ class IntegrationTests(unittest.TestCase):
 
             bundler_env = env.copy()
             bundler_env["PYTHONPATH"] = (
-                f"{site_dir}:{bundler_env['PYTHONPATH']}"
-                if bundler_env.get("PYTHONPATH")
-                else str(site_dir)
+                f"{site_dir}:{bundler_env['PYTHONPATH']}" if bundler_env.get("PYTHONPATH") else str(site_dir)
             )
             built = subprocess.run(
                 [

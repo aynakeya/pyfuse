@@ -134,13 +134,10 @@ def _build_report(
     graph: ModuleGraph,
 ) -> dict[str, object]:
     dependency_edges = sum(len(info.dependencies) for info in graph.modules.values())
-    module_dependencies = {
-        name: sorted(graph.modules[name].dependencies) for name in sorted(graph.modules.keys())
-    }
+    module_dependencies = {name: sorted(graph.modules[name].dependencies) for name in sorted(graph.modules.keys())}
     all_roots = [root_dir, *module_roots]
     module_origins = {
-        name: _find_module_origin(graph.modules[name].path, all_roots)
-        for name in sorted(graph.modules.keys())
+        name: _find_module_origin(graph.modules[name].path, all_roots) for name in sorted(graph.modules.keys())
     }
     skipped = [
         {
