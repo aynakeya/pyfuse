@@ -28,8 +28,8 @@
   - `--module-root PATH`
   - `--include-module MODULE`
   - `--include-package PACKAGE`
-  - `--vendor-package PACKAGE`（从当前 Python 环境引入纯 Python 包）
-  - `--vendor-module MODULE`（从当前 Python 环境引入单文件纯 Python 模块）
+  - `--vendor-package PACKAGE`（experimental，从当前 Python 环境引入纯 Python 包）
+  - `--vendor-module MODULE`（experimental，从当前 Python 环境引入单文件纯 Python 模块）
 - 支持 `--report` 输出 JSON 构建报告（打包模块、跳过模块及原因、依赖摘要、风险等级）。
 - 遇到不支持能力时显式报错（例如动态导入参数不是常量字符串）。
 
@@ -82,13 +82,13 @@ pyfuse build scripts/s1/main.py -o dist/s1.py --module-root src --include-packag
 
 `--include` 仍可使用，但只是 `--include-package` 的别名。
 
-`--vendor-package` 用于从当前 Python 环境定位并打包第三方包（必须是纯 Python 常规包，需有 `__init__.py`）：
+`--vendor-package` 是 experimental 功能，用于从当前 Python 环境定位并打包第三方包（必须是纯 Python 常规包，需有 `__init__.py`）：
 
 ```bash
 pyfuse build app/main.py -o dist/app.py --vendor-package somepkg
 ```
 
-`--vendor-module` 用于从当前 Python 环境定位并打包单文件模块（必须是 `.py`）：
+`--vendor-module` 是 experimental 功能，用于从当前 Python 环境定位并打包单文件模块（必须是 `.py`）：
 
 ```bash
 pyfuse build app/main.py -o dist/app.py --vendor-module somemod
@@ -207,6 +207,8 @@ PYTHONPATH=src python scripts/benchmark_all.py --warmup 2 --runs 10 --csv /tmp/p
   - 相对动态导入（如 `importlib.import_module(".x", "pkg")`）
 - 不支持打包 C 扩展模块（`.so` / `.pyd`）。
 - 不支持 namespace package（缺少 `__init__.py` 的包目录），会在构建阶段显式报错。
+- `--vendor-package` / `--vendor-module` 仍是 experimental：当前不保证完整第三方依赖解析，不支持 package data / metadata，也不支持 C 扩展依赖。
+- Known issue: `--vendor-package` 当前会把目标包所在的 Python 环境根加入解析范围，因此可能递归追踪并尝试打包 sibling third-party 包或标准库模块，导致输出过大或构建失败。临时规避方式是只 vendor 足够小且依赖简单的纯 Python 包，或改用 `--vendor-module` / `--include-module` 精确包含。
 - 对复杂运行时 import 魔改（例如动态改 `sys.meta_path`）不保证兼容。
 - `from pkg import name` 在静态分析上无法总是区分属性与子模块，当前实现会尽力解析可定位的本地子模块。
 - 同一路径根下如果同时存在 `pkg/mod.py` 和 `pkg/mod/__init__.py`，pyfuse 会按 Python import 规则选择 `pkg/mod/__init__.py`；被遮蔽的 `pkg/mod.py` 不会作为 `pkg.mod` 打包。

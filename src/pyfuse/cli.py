@@ -44,13 +44,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--vendor-package",
         action="append",
         default=[],
-        help="Package from current Python environment to vendor (pure Python package only)",
+        help="Experimental: package from current Python environment to vendor (pure Python package only)",
     )
     build.add_argument(
         "--vendor-module",
         action="append",
         default=[],
-        help="Single-file module from current Python environment to vendor (pure Python .py only)",
+        help="Experimental: single-file module from current Python environment to vendor (pure Python .py only)",
     )
     build.add_argument("--report", type=Path, help="Write JSON build report")
     build.add_argument("--debug", action="store_true", help="Show traceback for failures")
