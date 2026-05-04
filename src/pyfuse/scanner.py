@@ -47,7 +47,13 @@ def extract_top_level_defined_names(tree: ast.Module) -> set[str]:
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             names.add(node.name)
-        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+        elif isinstance(node, ast.Assign):
+            for target in _assignment_targets(node):
+                if isinstance(target, ast.Name):
+                    names.add(target.id)
+        elif isinstance(node, ast.AnnAssign):
+            if node.value is None:
+                continue
             for target in _assignment_targets(node):
                 if isinstance(target, ast.Name):
                     names.add(target.id)
@@ -90,7 +96,7 @@ def detect_unsupported_dynamic_imports(
     path: Path,
     allow_unresolved_dynamic_imports: bool = False,
 ) -> None:
-    importlib_aliases, dunder_import_aliases = _collect_dynamic_import_aliases(tree)
+    importlib_aliases, import_module_aliases, dunder_import_aliases = _collect_dynamic_import_aliases(tree)
     constants = _collect_top_level_string_constants(tree)
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -114,6 +120,13 @@ def detect_unsupported_dynamic_imports(
         if isinstance(func, ast.Name) and func.id in dunder_import_aliases and func.id != "__import__":
             raise UnsupportedFeatureError(
                 "dynamic import via aliased __import__ is not supported",
+                file=path,
+                lineno=lineno,
+            )
+
+        if isinstance(func, ast.Name) and func.id in import_module_aliases:
+            raise UnsupportedFeatureError(
+                "dynamic import via aliased importlib.import_module is not supported",
                 file=path,
                 lineno=lineno,
             )
@@ -181,8 +194,9 @@ def _collect_top_level_string_constants(tree: ast.AST) -> dict[str, str]:
     return values
 
 
-def _collect_dynamic_import_aliases(tree: ast.AST) -> tuple[set[str], set[str]]:
+def _collect_dynamic_import_aliases(tree: ast.AST) -> tuple[set[str], set[str], set[str]]:
     importlib_aliases: set[str] = {"importlib"}
+    import_module_aliases: set[str] = set()
     dunder_import_aliases: set[str] = {"__import__"}
 
     for node in ast.walk(tree):
@@ -190,6 +204,11 @@ def _collect_dynamic_import_aliases(tree: ast.AST) -> tuple[set[str], set[str]]:
             for alias in node.names:
                 if alias.name == "importlib":
                     importlib_aliases.add(alias.asname or alias.name)
+        elif isinstance(node, ast.ImportFrom):
+            if node.module == "importlib":
+                for alias in node.names:
+                    if alias.name == "import_module":
+                        import_module_aliases.add(alias.asname or alias.name)
         elif isinstance(node, ast.Assign):
             if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
                 continue
@@ -199,6 +218,8 @@ def _collect_dynamic_import_aliases(tree: ast.AST) -> tuple[set[str], set[str]]:
                     dunder_import_aliases.add(target_name)
                 if node.value.id in importlib_aliases:
                     importlib_aliases.add(target_name)
+                if node.value.id in import_module_aliases:
+                    import_module_aliases.add(target_name)
         elif isinstance(node, ast.AnnAssign):
             if not isinstance(node.target, ast.Name) or not isinstance(node.value, ast.Name):
                 continue
@@ -206,8 +227,10 @@ def _collect_dynamic_import_aliases(tree: ast.AST) -> tuple[set[str], set[str]]:
                 dunder_import_aliases.add(node.target.id)
             if node.value.id in importlib_aliases:
                 importlib_aliases.add(node.target.id)
+            if node.value.id in import_module_aliases:
+                import_module_aliases.add(node.target.id)
 
-    return importlib_aliases, dunder_import_aliases
+    return importlib_aliases, import_module_aliases, dunder_import_aliases
 
 
 def _assignment_targets(node: ast.Assign | ast.AnnAssign) -> list[ast.expr]:

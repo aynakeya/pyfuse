@@ -50,21 +50,36 @@ class GraphTests(unittest.TestCase):
             self.assertIn("pkg", graph.modules)
             self.assertNotIn("pkg.value", graph.modules)
 
-    def test_from_import_prefers_all_export_over_submodule(self) -> None:
+    def test_from_import_does_not_treat_all_as_defined_symbol(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             pkg = root / "pkg"
             pkg.mkdir()
             (pkg / "__init__.py").write_text(
-                "__all__ = ['value']\nvalue = 123\n",
+                "__all__ = ['value']\n",
                 encoding="utf-8",
             )
-            (pkg / "value.py").write_text("raise RuntimeError('should not load')\n", encoding="utf-8")
-            (root / "main.py").write_text("from pkg import value\nprint(value)\n", encoding="utf-8")
+            (pkg / "value.py").write_text("VALUE = 'submodule'\n", encoding="utf-8")
+            (root / "main.py").write_text("from pkg import value\nprint(value.VALUE)\n", encoding="utf-8")
 
             graph = build_graph(root, "main")
             self.assertIn("pkg", graph.modules)
-            self.assertNotIn("pkg.value", graph.modules)
+            self.assertIn("pkg.value", graph.modules)
+            self.assertIn("pkg.value", graph.modules["main"].dependencies)
+
+    def test_from_import_does_not_treat_annotation_only_as_defined_symbol(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            pkg = root / "pkg"
+            pkg.mkdir()
+            (pkg / "__init__.py").write_text("sub: int\n", encoding="utf-8")
+            (pkg / "sub.py").write_text("VALUE = 'submodule'\n", encoding="utf-8")
+            (root / "main.py").write_text("from pkg import sub\nprint(sub.VALUE)\n", encoding="utf-8")
+
+            graph = build_graph(root, "main")
+            self.assertIn("pkg", graph.modules)
+            self.assertIn("pkg.sub", graph.modules)
+            self.assertIn("pkg.sub", graph.modules["main"].dependencies)
 
     def test_include_package_prefers_package_over_same_named_module(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -86,6 +101,23 @@ class GraphTests(unittest.TestCase):
             self.assertIn("pkg.deep", graph.modules)
             self.assertTrue(graph.modules["pkg.deep"].is_package)
             self.assertEqual(graph.modules["pkg.deep"].source.strip(), "KIND = 'package'")
+
+    def test_include_nested_package_includes_parent_packages(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            pkg = root / "pkg"
+            subpkg = pkg / "subpkg"
+            subpkg.mkdir(parents=True)
+            (root / "main.py").write_text("print('entry')\n", encoding="utf-8")
+            (pkg / "__init__.py").write_text("NAME = 'pkg'\n", encoding="utf-8")
+            (subpkg / "__init__.py").write_text("NAME = 'subpkg'\n", encoding="utf-8")
+            (subpkg / "plugin.py").write_text("VALUE = 'plugin'\n", encoding="utf-8")
+
+            graph = build_graph(root, "main", include_packages=["pkg.subpkg"])
+
+            self.assertIn("pkg", graph.modules)
+            self.assertIn("pkg.subpkg", graph.modules)
+            self.assertIn("pkg.subpkg.plugin", graph.modules)
 
     def test_star_import_uses_package_all_for_local_submodule_deps(self) -> None:
         with tempfile.TemporaryDirectory() as td:

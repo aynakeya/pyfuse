@@ -118,7 +118,6 @@ def resolve_local_dependencies(
     req_names: tuple[str, ...],
     req_level: int,
     is_name_defined_in_module: Callable[[str, str], bool] | None = None,
-    is_name_exported_by_all: Callable[[str, str], bool] | None = None,
 ) -> set[str]:
     return resolve_import_request(
         root_dir=root_dir,
@@ -129,7 +128,6 @@ def resolve_local_dependencies(
         req_names=req_names,
         req_level=req_level,
         is_name_defined_in_module=is_name_defined_in_module,
-        is_name_exported_by_all=is_name_exported_by_all,
     ).local_deps
 
 
@@ -143,7 +141,6 @@ def resolve_import_request(
     req_names: tuple[str, ...],
     req_level: int,
     is_name_defined_in_module: Callable[[str, str], bool] | None = None,
-    is_name_exported_by_all: Callable[[str, str], bool] | None = None,
 ) -> ImportResolution:
     local_deps: set[str] = set()
     skipped: list[SkippedImport] = []
@@ -171,19 +168,6 @@ def resolve_import_request(
 
     for name in req_names:
         if name == "*":
-            continue
-        if (
-            abs_module
-            and abs_module_is_local
-            and is_name_exported_by_all is not None
-            and is_name_exported_by_all(abs_module, name)
-        ):
-            skipped.append(
-                SkippedImport(
-                    module=f"{abs_module}.{name}",
-                    reason="name-exported-by-all",
-                )
-            )
             continue
         if abs_module and abs_module_is_local and is_name_defined_in_module is not None:
             if is_name_defined_in_module(abs_module, name):

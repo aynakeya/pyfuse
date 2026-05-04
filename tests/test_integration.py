@@ -482,6 +482,62 @@ class IntegrationTests(unittest.TestCase):
             self.assertEqual(ran.returncode, 0, msg=f"run failed:\n{ran.stdout}\n{ran.stderr}")
             self.assertEqual(ran.stdout, "include-ok\n")
 
+    def test_include_nested_package_runs_outside_project_directory(self) -> None:
+        repo_root = Path(__file__).resolve().parent.parent
+        env = os.environ.copy()
+        src_path = str(repo_root / "src")
+        env["PYTHONPATH"] = src_path if not env.get("PYTHONPATH") else f"{src_path}:{env['PYTHONPATH']}"
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            project = root / "project"
+            pkg = project / "pkg"
+            subpkg = pkg / "subpkg"
+            outside = root / "outside"
+            subpkg.mkdir(parents=True)
+            outside.mkdir()
+            (pkg / "__init__.py").write_text("", encoding="utf-8")
+            (subpkg / "__init__.py").write_text("", encoding="utf-8")
+            (subpkg / "plugin.py").write_text("VALUE = 'nested-include-ok'\n", encoding="utf-8")
+            (project / "main.py").write_text(
+                "import importlib\n"
+                "name = '.'.join(['pkg', 'subpkg', 'plugin'])\n"
+                "print(importlib.import_module(name).VALUE)\n",
+                encoding="utf-8",
+            )
+
+            bundled_path = root / "dist" / "app.py"
+            built = subprocess.run(
+                [
+                    "python",
+                    "-m",
+                    "pyfuse.cli",
+                    "build",
+                    str(project / "main.py"),
+                    "-o",
+                    str(bundled_path),
+                    "--include-package",
+                    "pkg.subpkg",
+                ],
+                cwd=repo_root,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(built.returncode, 0, msg=f"bundle failed:\n{built.stdout}\n{built.stderr}")
+
+            ran = subprocess.run(
+                ["python", str(bundled_path)],
+                cwd=outside,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(ran.returncode, 0, msg=f"run failed:\n{ran.stdout}\n{ran.stderr}")
+            self.assertEqual(ran.stdout, "nested-include-ok\n")
+
     def test_module_root_ambiguous_module_fails(self) -> None:
         repo_root = Path(__file__).resolve().parent.parent
         env = os.environ.copy()

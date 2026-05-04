@@ -69,6 +69,12 @@ from .sub import y
             detect_unsupported_dynamic_imports(tree, Path("main.py"))
         self.assertIn("aliased importlib.import_module", str(ctx.exception))
 
+    def test_detect_from_importlib_import_module_raises(self) -> None:
+        tree = ast.parse("from importlib import import_module\nimport_module('x.y')")
+        with self.assertRaises(UnsupportedFeatureError) as ctx:
+            detect_unsupported_dynamic_imports(tree, Path("main.py"))
+        self.assertIn("aliased importlib.import_module", str(ctx.exception))
+
     def test_detect_alias_dunder_dynamic_import_raises(self) -> None:
         tree = ast.parse("_import = __import__\n_import('x')")
         with self.assertRaises(UnsupportedFeatureError) as ctx:
@@ -81,9 +87,11 @@ from .sub import y
             "import pkg.sub\n"
             "from x import y as yy\n"
             "A = 1\n"
+            "B: int = 2\n"
+            "C: int\n"
             "def fn():\n"
             "    return 1\n"
-            "class C:\n"
+            "class Klass:\n"
             "    pass\n"
         )
         # fmt: on
@@ -91,8 +99,10 @@ from .sub import y
         self.assertIn("pkg", names)
         self.assertIn("yy", names)
         self.assertIn("A", names)
+        self.assertIn("B", names)
+        self.assertNotIn("C", names)
         self.assertIn("fn", names)
-        self.assertIn("C", names)
+        self.assertIn("Klass", names)
 
     def test_extract_top_level_all_names(self) -> None:
         tree = ast.parse("__all__ = ['a', 'b']\n__all__ = ('c',)\nx = 1\n")

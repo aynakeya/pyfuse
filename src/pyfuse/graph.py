@@ -142,10 +142,6 @@ def _visit_module(
                 all_names_cache[module_name] = extract_top_level_all_names(dep_tree)
         return all_names_cache[module_name]
 
-    def is_name_exported_by_all(module_name: str, name: str) -> bool:
-        all_names = get_module_all_names(module_name)
-        return bool(all_names) and name in all_names
-
     for req in imports:
         try:
             resolved_import = resolve_import_request(
@@ -157,7 +153,6 @@ def _visit_module(
                 req_names=req.names,
                 req_level=req.level,
                 is_name_defined_in_module=is_name_defined_in_module,
-                is_name_exported_by_all=is_name_exported_by_all,
             )
         except ResolutionError as exc:
             raise ResolutionError(exc.message, file=resolved.path, lineno=req.lineno) from exc
@@ -261,6 +256,20 @@ def _include_package_tree(
         raise ResolutionError(f"included package '{package_name}' was not found in local module roots")
     if not resolved.is_package:
         raise ResolutionError(f"included package '{package_name}' is not a package")
+
+    for parent_package in parent_packages(package_name):
+        parent_resolved = resolve_module_in_roots(search_roots, parent_package)
+        if parent_resolved is not None:
+            _visit_module(
+                root_dir,
+                search_roots,
+                parent_resolved,
+                modules,
+                skipped_imports,
+                defined_names_cache,
+                allow_unresolved_dynamic_imports=allow_unresolved_dynamic_imports,
+                logger=logger,
+            )
 
     package_dir = resolved.path.parent
     for path in sorted(package_dir.rglob("*.py")):

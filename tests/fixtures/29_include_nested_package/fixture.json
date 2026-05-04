@@ -1,0 +1,6 @@
+{
+  "entry": "main.py",
+  "original": {"cmd": ["python", "main.py"]},
+  "include_packages": ["pkg.subpkg"],
+  "expect_bundle_success": true
+}
