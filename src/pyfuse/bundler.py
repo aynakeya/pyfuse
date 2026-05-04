@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Callable
 
 from .errors import ResolutionError
-from .generator import generate_bundled_script, write_bundled_script
+from .generator import CodeFormat, generate_bundled_script, write_bundled_script
 from .graph import ModuleGraph, build_graph
 from .resolver import compute_entry_context
 
@@ -24,6 +24,7 @@ class BundleResult:
     entry_module: str
     graph: ModuleGraph
     output_path: Path
+    code_format: CodeFormat
     report: dict[str, object]
 
 
@@ -36,6 +37,7 @@ def bundle_project(
     include_packages: list[str] | None = None,
     vendor_packages: list[str] | None = None,
     vendor_modules: list[str] | None = None,
+    code_format: CodeFormat = "source",
     logger: Callable[[str], None] | None = None,
 ) -> BundleResult:
     entry_file = entry_file.resolve()
@@ -68,6 +70,7 @@ def bundle_project(
             logger(f"vendor package: {vendor}")
         for vendor_module in vendor_module_names:
             logger(f"vendor module: {vendor_module}")
+        logger(f"code format: {code_format}")
         logger(f"entry mod:  {entry_module}")
 
     graph = build_graph(
@@ -81,7 +84,7 @@ def bundle_project(
     if logger is not None:
         logger(f"graph size: {len(graph.modules)} modules")
 
-    bundled = generate_bundled_script(graph, entry_module)
+    bundled = generate_bundled_script(graph, entry_module, code_format=code_format)
     write_bundled_script(bundled, output_path)
     if logger is not None:
         logger(f"wrote bundle: {output_path}")
@@ -94,6 +97,7 @@ def bundle_project(
         include_packages=include_package_names,
         vendor_packages=vendor_package_names,
         vendor_modules=vendor_module_names,
+        code_format=code_format,
         entry_module=entry_module,
         output_path=output_path,
         graph=graph,
@@ -116,6 +120,7 @@ def bundle_project(
         entry_module=entry_module,
         graph=graph,
         output_path=output_path,
+        code_format=code_format,
         report=report,
     )
 
@@ -129,6 +134,7 @@ def _build_report(
     include_packages: list[str],
     vendor_packages: list[str],
     vendor_modules: list[str],
+    code_format: CodeFormat,
     entry_module: str,
     output_path: Path,
     graph: ModuleGraph,
@@ -164,6 +170,7 @@ def _build_report(
         "included_packages_tree": include_packages,
         "vendor_packages": vendor_packages,
         "vendor_modules": vendor_modules,
+        "code_format": code_format,
         "output_path": str(output_path),
         "bundled_modules": sorted(graph.modules.keys()),
         "bundled_module_count": len(graph.modules),

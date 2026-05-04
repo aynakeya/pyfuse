@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import py_compile
 import subprocess
 import tempfile
 import unittest
@@ -223,6 +224,7 @@ class IntegrationTests(unittest.TestCase):
             self.assertIn("included_packages_tree", report)
             self.assertIn("uncertain_imports", report)
             self.assertIn("risk_level", report)
+            self.assertEqual(report["code_format"], "source")
 
     def test_build_report_tracks_module_origins_for_module_root(self) -> None:
         repo_root = Path(__file__).resolve().parent.parent
@@ -353,6 +355,68 @@ class IntegrationTests(unittest.TestCase):
             )
             self.assertEqual(ran.returncode, 0, msg=f"run failed:\n{ran.stdout}\n{ran.stderr}")
             self.assertEqual(ran.stdout, "outside-ok\n")
+
+    def test_marshal_code_format_runs_as_pyc_without_embedded_source(self) -> None:
+        repo_root = Path(__file__).resolve().parent.parent
+        env = os.environ.copy()
+        src_path = str(repo_root / "src")
+        env["PYTHONPATH"] = src_path if not env.get("PYTHONPATH") else f"{src_path}:{env['PYTHONPATH']}"
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            project = root / "project"
+            outside = root / "outside"
+            project.mkdir()
+            outside.mkdir()
+            (project / "main.py").write_text("import helper\nprint('entry', helper.msg())\n", encoding="utf-8")
+            # fmt: off
+            (project / "helper.py").write_text(
+                "def msg():\n"
+                "    return 'hello-from-helper'\n",
+                encoding="utf-8",
+            )
+            # fmt: on
+            bundled_path = root / "bundled.py"
+            pyc_path = root / "bundled.pyc"
+
+            built = subprocess.run(
+                [
+                    "python",
+                    "-m",
+                    "pyfuse.cli",
+                    "build",
+                    str(project / "main.py"),
+                    "-o",
+                    str(bundled_path),
+                    "--code-format",
+                    "marshal",
+                ],
+                cwd=repo_root,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(built.returncode, 0, msg=f"bundle failed:\n{built.stdout}\n{built.stderr}")
+
+            source_text = bundled_path.read_text(encoding="utf-8")
+            self.assertIn("code_bytes", source_text)
+            self.assertNotIn("def msg():", source_text)
+
+            py_compile.compile(str(bundled_path), cfile=str(pyc_path), doraise=True)
+            pyc_bytes = pyc_path.read_bytes()
+            self.assertNotIn(b"def msg():", pyc_bytes)
+
+            ran = subprocess.run(
+                ["python", str(pyc_path)],
+                cwd=outside,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(ran.returncode, 0, msg=f"run failed:\n{ran.stdout}\n{ran.stderr}")
+            self.assertEqual(ran.stdout, "entry hello-from-helper\n")
 
     def test_module_root_bundles_local_package_outside_entry_dir(self) -> None:
         repo_root = Path(__file__).resolve().parent.parent

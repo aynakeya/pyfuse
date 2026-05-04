@@ -8,6 +8,7 @@ from __future__ import annotations
 import importlib.abc
 import importlib
 import importlib.util
+import marshal
 import sys
 import types
 
@@ -15,6 +16,13 @@ import types
 _PYFUSE_MODULES = {modules_literal}
 _ENTRY_MODULE_NAME = {entry_module!r}
 _ENTRY_MODULE = None
+
+
+def _load_code(spec):
+    code_bytes = spec.get("code_bytes")
+    if code_bytes is not None:
+        return marshal.loads(code_bytes)
+    return compile(spec["code"], spec["filename"], "exec")
 
 
 class _PyfuseLoader(importlib.abc.Loader):
@@ -26,7 +34,6 @@ class _PyfuseLoader(importlib.abc.Loader):
 
     def exec_module(self, module):
         spec = _PYFUSE_MODULES[self.fullname]
-        code = spec["code"]
         filename = spec["filename"]
         module.__file__ = filename
         module.__loader__ = self
@@ -34,8 +41,7 @@ class _PyfuseLoader(importlib.abc.Loader):
         if spec["is_package"]:
             module.__path__ = [f"<pyfuse>/{{self.fullname}}"]
 
-        compiled = compile(code, filename, "exec")
-        exec(compiled, module.__dict__)
+        exec(_load_code(spec), module.__dict__)
 
 
 class _PyfuseFinder(importlib.abc.MetaPathFinder):
@@ -91,8 +97,7 @@ def _run_entry() -> None:
     main_mod.__builtins__ = __builtins__
     sys.modules["__main__"] = main_mod
 
-    compiled = compile(entry["code"], entry["filename"], "exec")
-    exec(compiled, main_mod.__dict__)
+    exec(_load_code(entry), main_mod.__dict__)
 
 
 if __name__ == "__main__":

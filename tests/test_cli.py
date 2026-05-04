@@ -16,6 +16,16 @@ class CliTests(unittest.TestCase):
         args = parser.parse_args(["build", "main.py", "-o", "out.py", "--report", "report.json"])
         self.assertEqual(str(args.report), "report.json")
 
+    def test_build_parser_supports_code_format(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["build", "main.py", "-o", "out.py", "--code-format", "marshal"])
+        self.assertEqual(args.code_format, "marshal")
+
+    def test_build_parser_defaults_to_source_code_format(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["build", "main.py", "-o", "out.py"])
+        self.assertEqual(args.code_format, "source")
+
     def test_build_parser_supports_module_root_and_include(self) -> None:
         parser = build_parser()
         args = parser.parse_args(

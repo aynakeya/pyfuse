@@ -53,6 +53,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Experimental: single-file module from current Python environment to vendor (pure Python .py only)",
     )
     build.add_argument("--report", type=Path, help="Write JSON build report")
+    build.add_argument(
+        "--code-format",
+        choices=("source", "marshal"),
+        default="source",
+        help="Module payload format: source keeps embedded source text; marshal embeds compiled code bytes",
+    )
     build.add_argument("--debug", action="store_true", help="Show traceback for failures")
     build.add_argument("--verbose", action="store_true", help="Show verbose build logs")
     return parser
@@ -75,6 +81,7 @@ def main(argv: list[str] | None = None) -> int:
                 include_packages=include_packages,
                 vendor_packages=args.vendor_package,
                 vendor_modules=args.vendor_module,
+                code_format=args.code_format,
                 logger=logger,
             )
         except PyfuseError as exc:

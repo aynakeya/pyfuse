@@ -59,7 +59,7 @@ pip install -e ".[dev]"
 
 CLI：
 ```text
-pyfuse build ENTRY.py -o OUTPUT.py [--debug] [--verbose] [--report REPORT.json] [--module-root PATH] [--include-module MODULE] [--include-package PACKAGE] [--vendor-package PACKAGE] [--vendor-module MODULE]
+pyfuse build ENTRY.py -o OUTPUT.py [--debug] [--verbose] [--report REPORT.json] [--code-format source|marshal] [--module-root PATH] [--include-module MODULE] [--include-package PACKAGE] [--vendor-package PACKAGE] [--vendor-module MODULE]
 ```
 
 `--module-root` 用来声明额外的本地用户代码根目录。例如入口在 `scripts/s1/main.py`，包在 `src/package_a`：
@@ -81,6 +81,13 @@ pyfuse build scripts/s1/main.py -o dist/s1.py --module-root src --include-packag
 ```
 
 `--include` 仍可使用，但只是 `--include-package` 的别名。
+
+`--code-format marshal` 会把每个被打包模块预编译成 code object，并以 `marshal` bytes 形式嵌入输出文件。它用于简单混淆：再把输出文件编译成 `.pyc` 后，子模块源码不会再以完整源码字符串形式出现。默认值是 `source`，保留源码字符串，便于调试。
+
+```bash
+pyfuse build app/main.py -o dist/app.py --code-format marshal
+python -m py_compile dist/app.py
+```
 
 `--vendor-package` 是 experimental 功能，用于从当前 Python 环境定位并打包第三方包（必须是纯 Python 常规包，需有 `__init__.py`）：
 
@@ -115,6 +122,7 @@ python dist/s1.py
 - `module_origins`: 每个被打包模块来自哪个本地根
 - `vendor_packages`: 用户通过 `--vendor-package` 显式引入的包
 - `vendor_modules`: 用户通过 `--vendor-module` 显式引入的模块
+- `code_format`: 模块载荷格式（`source` 或 `marshal`）
 - `risk_level`: 构建风险等级
 - `uncertain_imports`: 未打包或不确定 import 的诊断记录
 
@@ -207,6 +215,7 @@ PYTHONPATH=src python scripts/benchmark_all.py --warmup 2 --runs 10 --csv /tmp/p
   - 相对动态导入（如 `importlib.import_module(".x", "pkg")`）
 - 不支持打包 C 扩展模块（`.so` / `.pyd`）。
 - 不支持 namespace package（缺少 `__init__.py` 的包目录），会在构建阶段显式报错。
+- `--code-format marshal` 是简单混淆，不是加密；生成的 code object 仍可被反汇编或反编译，并且更依赖生成时的 Python 版本。
 - `--vendor-package` / `--vendor-module` 仍是 experimental：当前不保证完整第三方依赖解析，不支持 package data / metadata，也不支持 C 扩展依赖。
 - Known issue: `--vendor-package` 当前会把目标包所在的 Python 环境根加入解析范围，因此可能递归追踪并尝试打包 sibling third-party 包或标准库模块，导致输出过大或构建失败。临时规避方式是只 vendor 足够小且依赖简单的纯 Python 包，或改用 `--vendor-module` / `--include-module` 精确包含。
 - 对复杂运行时 import 魔改（例如动态改 `sys.meta_path`）不保证兼容。
